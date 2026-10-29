@@ -92,6 +92,16 @@ class DatabaseHelper {
         // Column already exists
       }
     }
+
+    final speciesCols = [
+      'verification_status TEXT NOT NULL DEFAULT \'verified\'',
+      'record_type TEXT NOT NULL DEFAULT \'species\'',
+    ];
+    for (final col in speciesCols) {
+      try {
+        await db.execute('ALTER TABLE species_catalog ADD COLUMN $col');
+      } catch (_) {}
+    }
   }
 
   Future<void> _createDB(Database db, int version) async {
@@ -139,6 +149,8 @@ class DatabaseHelper {
         photo_url TEXT,
         visual_features TEXT,
         ai_trained INTEGER NOT NULL DEFAULT 0,
+        verification_status TEXT NOT NULL DEFAULT 'verified',
+        record_type TEXT NOT NULL DEFAULT 'species',
         cached_at TEXT NOT NULL
       )
     ''');

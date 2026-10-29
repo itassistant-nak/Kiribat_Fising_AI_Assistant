@@ -13,6 +13,7 @@ void main() async {
 
   final syncService = SyncService();
   await syncService.seedInitialOfflineDataIfEmpty();
+  syncService.startAutoSync();
 
   runApp(KiribatiFisheriesApp(syncService: syncService));
 }

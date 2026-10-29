@@ -39,6 +39,10 @@ class SyncService extends ChangeNotifier {
   int _pendingCatchesCount = 0;
   int _pendingTripsCount = 0;
   bool _isCacheStale = false;
+  String? _authToken;
+  String? _authenticatedUserEmail;
+  String? _authenticatedUserName;
+  Timer? _autoSyncTimer;
 
   bool get isAirplaneMode => _isAirplaneMode;
   bool get isSyncing => _isSyncing;
@@ -47,6 +51,10 @@ class SyncService extends ChangeNotifier {
   int get pendingCatchesCount => _pendingCatchesCount;
   int get pendingTripsCount => _pendingTripsCount;
   bool get isCacheStale => _isCacheStale;
+  String? get authToken => _authToken;
+  String? get authenticatedUserEmail => _authenticatedUserEmail;
+  String? get authenticatedUserName => _authenticatedUserName;
+  bool get isAuthenticated => _authToken != null;
 
   SyncService({
     DatabaseHelper? db,
@@ -54,9 +62,69 @@ class SyncService extends ChangeNotifier {
   })  : _db = db ?? DatabaseHelper.instance,
         _api = api ?? ApiClient();
 
+  @override
+  void dispose() {
+    stopAutoSync();
+    super.dispose();
+  }
+
   void setAirplaneMode(bool enabled) {
     _isAirplaneMode = enabled;
     notifyListeners();
+  }
+
+  /// Authenticate with Laravel API using fisher credentials
+  Future<bool> login({
+    String email = 'teititeki@fisher.ki',
+    String password = 'FisherPass2026!',
+  }) async {
+    if (_isAirplaneMode) return false;
+    try {
+      final res = await _api.login(email, password);
+      _authToken = res['token'] as String?;
+      final user = res['user'] as Map<String, dynamic>?;
+      _authenticatedUserEmail = user?['email'] as String? ?? email;
+      _authenticatedUserName = user?['name'] as String?;
+      notifyListeners();
+      return _authToken != null;
+    } catch (e) {
+      debugPrint('SyncService login failed: $e');
+      return false;
+    }
+  }
+
+  /// Ensure we have a valid token when online
+  Future<void> ensureAuthenticated() async {
+    if (_authToken == null && !_isAirplaneMode) {
+      await login();
+    }
+  }
+
+  /// Start periodic auto-synchronization when online
+  void startAutoSync({Duration interval = const Duration(seconds: 30)}) {
+    _autoSyncTimer?.cancel();
+    _autoSyncTimer = Timer.periodic(interval, (_) async {
+      if (!_isAirplaneMode && !_isSyncing) {
+        final pending = await _db.getLocalCatches();
+        final pendingTrips = await _db.getLocalTrips(syncStatus: 'pending');
+        final hasPendingWork = pending.any((c) => c.syncStatus == 'pending' || c.syncStatus == 'failed') ||
+            pendingTrips.isNotEmpty ||
+            await _db.isCacheStale('advisory_zones');
+
+        if (hasPendingWork) {
+          await ensureAuthenticated();
+          if (_authToken != null) {
+            await performFullSync(token: _authToken);
+          }
+        }
+      }
+    });
+  }
+
+  /// Stop periodic auto-synchronization
+  void stopAutoSync() {
+    _autoSyncTimer?.cancel();
+    _autoSyncTimer = null;
   }
 
   Future<void> refreshPendingCount() async {
@@ -88,6 +156,11 @@ class SyncService extends ChangeNotifier {
       );
     }
 
+    if (token == null && _authToken == null) {
+      await ensureAuthenticated();
+    }
+    final activeToken = token ?? _authToken;
+
     _isSyncing = true;
     _lastError = null;
     notifyListeners();
@@ -96,7 +169,7 @@ class SyncService extends ChangeNotifier {
       // Step 1: Inbound Advisory Zones Sync
       int zonesCount = 0;
       try {
-        final zones = await _api.fetchAdvisoryZones(token: token);
+        final zones = await _api.fetchAdvisoryZones(token: activeToken);
         await _db.saveAdvisoryZones(zones);
         await _db.updateCacheMetadata('advisory_zones');
         zonesCount = zones.length;
@@ -107,7 +180,7 @@ class SyncService extends ChangeNotifier {
       // Step 2: Inbound Species Catalog Sync
       int speciesCount = 0;
       try {
-        final species = await _api.fetchSpecies(token: token);
+        final species = await _api.fetchSpecies(token: activeToken);
         await _db.saveSpeciesCatalog(species);
         await _db.updateCacheMetadata('species_catalog');
         speciesCount = species.length;
@@ -136,7 +209,7 @@ class SyncService extends ChangeNotifier {
               final aiRes = await _api.identifyFish(
                 imageUrl: catchRecord.photoUrl,
                 hint: catchRecord.speciesNameRaw,
-                token: token,
+                token: activeToken,
               );
               // Laravel returns the suggestion under `identification`
               // (SAM segmentation nested alongside it, never a name).
@@ -176,7 +249,7 @@ class SyncService extends ChangeNotifier {
             ciguateraWarning: ciguateraWarning,
           );
 
-          final serverRes = await _api.uploadCatch(updatedCatch, token: token);
+          final serverRes = await _api.uploadCatch(updatedCatch, token: activeToken);
           final serverId = serverRes['catch']?['id'] as int? ??
               serverRes['data']?['id'] as int? ??
               serverRes['id'] as int?;
@@ -208,7 +281,7 @@ class SyncService extends ChangeNotifier {
 
       for (final trip in pendingTrips) {
         try {
-          final tripResult = await syncSingleTrip(trip, token: token);
+          final tripResult = await syncSingleTrip(trip, token: activeToken);
           tripsUploaded++;
           pointsUploaded += tripResult;
         } catch (e) {

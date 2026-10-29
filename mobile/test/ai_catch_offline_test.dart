@@ -136,6 +136,8 @@ void main() {
         photo_url TEXT,
         visual_features TEXT,
         ai_trained INTEGER NOT NULL DEFAULT 0,
+        verification_status TEXT NOT NULL DEFAULT 'verified',
+        record_type TEXT NOT NULL DEFAULT 'species',
         cached_at TEXT NOT NULL
       )
     ''');
@@ -159,10 +161,8 @@ void main() {
         classification TEXT NOT NULL,
         status TEXT NOT NULL,
         polygon_geojson TEXT NOT NULL,
-        approved_at TEXT,
-        published_at TEXT,
+        source TEXT,
         review_date TEXT,
-        created_at TEXT NOT NULL,
         updated_at TEXT,
         cached_at TEXT NOT NULL
       )

@@ -50,7 +50,7 @@ echo ""
 
 echo "Starting Laravel API (detached, log: /tmp/kiri_backend.log)..."
 cd "$ROOT/backend"
-nohup php artisan serve --host=127.0.0.1 --port=8000 </dev/null >>/tmp/kiri_backend.log 2>&1 &
+nohup bash -c 'while true; do php artisan serve --host=127.0.0.1 --port=8000; sleep 1; done' </dev/null >>/tmp/kiri_backend.log 2>&1 &
 echo $! > /tmp/kiri_backend.pid
 disown 2>/dev/null || true
 [ "$(wait_for 8000 /api/health 15)" = "1" ] || fail "Laravel API did not respond on port 8000." "See: tail -30 /tmp/kiri_backend.log"

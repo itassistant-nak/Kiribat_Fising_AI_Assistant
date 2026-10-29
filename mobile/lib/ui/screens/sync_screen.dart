@@ -99,6 +99,52 @@ class _SyncScreenState extends State<SyncScreen> {
 
             const SizedBox(height: 16),
 
+            // Fisher Account & Backend Connection Card
+            Card(
+              elevation: 2,
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          sync.isAuthenticated ? Icons.verified_user_rounded : Icons.account_circle_rounded,
+                          color: sync.isAuthenticated ? Colors.teal : Colors.indigo,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Fisher Authentication (Laravel / MySQL API)',
+                          style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                                fontWeight: FontWeight.bold,
+                              ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      sync.isAuthenticated
+                          ? 'Logged in: ${sync.authenticatedUserName ?? "Artisanal Fisher"} (${sync.authenticatedUserEmail ?? "teititeki@fisher.ki"})'
+                          : 'Not authenticated — Auto-login ready on sync',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: sync.isAuthenticated ? Colors.teal.shade800 : Colors.grey.shade700,
+                        fontWeight: sync.isAuthenticated ? FontWeight.w600 : FontWeight.normal,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'API Host: http://127.0.0.1:8000  •  Database: MySQL (kiribati_fisheries)',
+                      style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 16),
+
             // Sync Status & Stale Cache Metrics Card
             Card(
               elevation: 2,

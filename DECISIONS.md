@@ -261,6 +261,26 @@
   4. Seeder reseeds advisories with FK-safe DELETE (cascade) instead of TRUNCATE, restoring MySQL 8 `migrate:fresh --seed`.
 - Consequences: Offline retries are safe and cheap; locations are never invented; SAM stays segmentation-only; demo seeds reproduce identically on SQLite and MySQL 8.
 
+## ADR-020 — Muse Wonder Fisheries Assistant Is Advisory-Only and Grounded (accepted)
+- Status: Accepted (Day 5, P0-09).
+- Context: P0-09 required deepening the Muse Wonder 1.0 integration: verify image modality, add a structured fisheries-assistant query, and combine SAM 3.1 + knowledge base + Muse without letting the text model invent species, confidence, or safety verdicts.
+- Decision:
+  1. `MetaAiService::queryFisheriesAssistant()` receives only the KB-selected candidate (Kiribati/English/scientific names), a textual SAM evidence summary, and an optional fisher hint. Its prompt asks solely for habitat, subsistence significance, and ciguatoxin-pattern notes, and verbatim forbids alternative species names, invented confidence/statistics, and photo-based identity or toxicity claims.
+  2. `AiIdentificationController::identify()` orders evidence SAM → KB → Muse: SAM segments (never names), the KB/reference database supplies identity, risk, and confidence, and Muse text survives only as `meta_model.advisory_notes`. Human confirmation remains mandatory (ADR-002).
+  3. Image modality is probed only via explicit `MetaAiService::investigateImageModality()` calls; `meta-health` reports the known modality (muse-wonder-1.0 text-only, sam-3.1 image) without spending a billable probe, and never returns the API key.
+  4. All automated tests mock Meta (`Http::fake`, forced empty keys, `assertNothingSent`/`assertSentCount` guards) so suites can never bill or leak (extends ADR-016 rule 5).
+- Consequences: Officers get grounded biology/safety context beside — never instead of — KB identity and human verification; the no-invention property is regression-tested with an adversarial advisory that names a different species; live vision claims still await a user-approved key and probe.
+
+## ADR-021 — Flutter Online Sync and Fisher Sanctum Authentication with MySQL Backend (accepted)
+- Status: Accepted (Day 6).
+- Context: The Flutter mobile application requires offline-first SQLite durability while operating in remote Kiribati waters, and automatic online synchronization with the Laravel REST API connected to MySQL (`kiribati_fisheries`) when connectivity is available. Laravel API endpoints (`/api/species`, `/api/advisory-zones`, `/api/catches`, `/api/trips`) are protected by Sanctum token authentication.
+- Decision:
+  1. Fisher Authentication: Added `ApiClient.login(email, password)` and `SyncService.ensureAuthenticated()` using seeded fisher credentials (`teititeki@fisher.ki` / `FisherPass2026!`). Tokens are held securely in memory on the mobile client and automatically injected into all sync request headers (`Bearer $token`).
+  2. Automatic Background Sync: Added `SyncService.startAutoSync()` running a periodic timer (default 30s) that monitors for pending catches, pending trips, or stale advisory zone caches, auto-authenticating and synchronizing with MySQL only when the device is not in airplane mode.
+  3. Reference Data Inbound Sync: Updated Flutter's `SpeciesItem` and SQLite `species_catalog` table to capture `verification_status` and `record_type` from the 42 reference species in MySQL.
+  4. Outbound Catches & GPS Breadcrumbs: Client UUIDs prevent duplicate submissions via server-side idempotency (`200 idempotent_replay`); route breadcrumbs synchronize as ordered polylines without re-billing AI models.
+- Consequences: Seamless transition between offline SQLite storage and MySQL online persistence; zero authentication failures; verified idempotency and zero duplicate catch records.
+
 ## ADR template
 - ID/date:
 - Status: Proposed / Accepted / Superseded

@@ -31,6 +31,30 @@ class ApiClient {
     }
   }
 
+  /// Authenticate with Laravel API and return user token
+  Future<Map<String, dynamic>> login(String email, String password) async {
+    final uri = Uri.parse('$baseUrl/api/auth/login');
+    final res = await _client
+        .post(
+          uri,
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode({
+            'email': email,
+            'password': password,
+          }),
+        )
+        .timeout(const Duration(seconds: 10));
+
+    if (res.statusCode != 200) {
+      throw Exception('Login failed: HTTP ${res.statusCode} ${res.body}');
+    }
+
+    return jsonDecode(res.body) as Map<String, dynamic>;
+  }
+
   /// Download published advisory zones
   Future<List<AdvisoryZone>> fetchAdvisoryZones({String? token}) async {
     final headers = {

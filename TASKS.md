@@ -20,9 +20,33 @@ Only mark `DONE` when acceptance criteria are tested. Each agent claims one task
 | P0-03-AI | P0 | Camera Catch Capture & AI Identification (Online/Offline Cache) | CLAIMED | Day3-Flutter-OfflineGIS | master | Camera capture, Meta AI vision inference online, SQLite species cache fallback offline, and auto-sync online AI queue |
 | P1-05 | P1 | GPS trip routes | DONE | P1-05-TripRoutes-Agent (Muse Code) | master | Offline route survives restart and syncs (46 PHPUnit, 27 Flutter, 8/8 live acceptance pass) |
 | P0-08 | P0 | End-to-end demo + submission | DONE | Day4-Integration-Agent (Muse Code) | master | 18-step workflow tested (17 PASS/1 FAIL/2 BLOCKED documented), checklist + docs + video script ready |
-| P0-09 | P0 | Muse Wonder 1.0 fisheries assistant integration (deepen + test) | IN_PROGRESS | MuseWonder-Agent (Claude Sonnet 4.6 Thinking) 2026-10-28T15:53 +12:00 | master | Verify image modality, implement queryFisheriesAssistant(), combine SAM+KB+Muse, no invented species, all Meta calls mocked in tests |
+| P0-09 | P0 | Muse Wonder 1.0 fisheries assistant integration (deepen + test) | DONE | Muse Code (muse-wonder-1.0) session 01a18594 2026-10-29 (took over stale claim from MuseWonder-Agent 2026-10-28 per user direction) | main | Image modality verified (probe mocked accept/reject; meta-health reports without probing), queryFisheriesAssistant() grounded in KB+SAM+hint with anti-invention rules, identify-fish combines SAM+KB+Muse with KB-only identity (adversarial advisory test), all Meta calls mocked; 9 new FisheriesAssistantTest pass, full suite 79 passed (1064 assertions) |
 | P0-10 | P0 | Day 5 catch idempotency, GPS-null and sync-retry hardening | DONE | Muse Code (muse-wonder-1.0) 2026-10-29 UTC | master | client_uuid unique + 200 replay (live step 12 now PASS), GPS null/range-checked, failed catches retried with AI persisted pre-upload (identify billed once), mobile parses identification+segmentation with SAM/verification display; 70 PHPUnit + 43 Flutter pass; MySQL 8 live migrate:fresh --seed 5/42/2/8/3 after FK-safe seeder fix |
 | P1-06 | P1 | Day 4 reference-database hardening (35-entry import) | DONE | Muse Code (muse-wonder-1.0) 2026-10-29T00:40 UTC | master | 42 catalog (9 verified species + 12 needs_review species + 9 taxonomic_group + 12 non_fish_organism); verbatim scientific_name_as_provided incl. misspellings; GET /api/species?verification_status/record_type filters; identify-fish reference_candidates labelled, no fabricated confidence, SAM separate; 65 PHPUnit pass (981 assertions), migrate:fresh --seed reproduces 42/5 users |
+| P0-11 | P0 | Flutter Online Sync & Authentication with MySQL API | DONE | Flutter-MySQL-Sync-Agent 2026-10-29 (+12:00) | main | Auto-sync periodic timer, Sanctum token authentication & injection across all sync steps, offline species SQLite schema alignment with 42 reference records, client UUID idempotency, and live verified sync to MySQL database; 48 Flutter tests pass, 79 PHPUnit tests pass |
+
+---
+- Task ID: P0-11 (Flutter Online Sync & Authentication with MySQL API)
+- Agent/model and session: Flutter-MySQL-Sync-Agent 2026-10-29 (+12:00)
+- Branch/worktree: main
+- Files changed:
+  - `mobile/lib/services/sync/api_client.dart` (`login` endpoint implementation)
+  - `mobile/lib/services/sync/sync_service.dart` (`_authToken`, `login()`, `ensureAuthenticated()`, `startAutoSync()`, `stopAutoSync()`, and `activeToken` injection across all 4 sync steps)
+  - `mobile/lib/data/database_helper.dart` (`species_catalog` table migration with `verification_status` and `record_type`)
+  - `mobile/lib/models/species.dart` (`verificationStatus` and `recordType` fields, serialization)
+  - `mobile/lib/main.dart` (invokes `syncService.startAutoSync()` on app startup)
+  - `mobile/lib/ui/screens/sync_screen.dart` (Fisher Account & Backend Connection card displaying live authentication and MySQL status)
+  - `mobile/test/offline_auto_sync_test.dart` (new suite: 5 tests covering login, token injection, auto-sync, airplane mode, and UUID retry)
+  - `mobile/test/ai_catch_offline_test.dart`, `mobile/test/offline_sqlite_sync_test.dart`, `mobile/test/trip_route_offline_test.dart` (fixture schema alignment)
+  - `scripts/verify_flutter_mysql_sync.js` (live end-to-end sync verification script)
+  - `DECISIONS.md` (ADR-021), `PROJECT_STATE.md`, `TASKS.md`
+- Acceptance criteria / Evidence:
+  1. Fisher Sanctum Authentication: Mobile authenticates via `POST /api/auth/login` and automatically uses bearer token for protected routes (`/api/species`, `/api/advisory-zones`, `/api/catches`, `/api/trips`).
+  2. Automatic Background Sync: Periodic timer detects pending catches, pending trips, or stale caches and triggers sync automatically when online.
+  3. Offline Reference Catalog: Downloads 42 species items from MySQL and caches with verification status and record type.
+  4. Outbound Catches & GPS Breadcrumbs: Client UUIDs prevent duplicate rows; catches and GPS trips persist directly to MySQL tables `catch_records`, `fishing_trips`, `trip_route_points`.
+  5. Tested: All 48 Flutter tests pass (`run_tests` MCP). All 79 PHPUnit tests pass (`php artisan test`). Next.js frontend builds cleanly. Live end-to-end sync script (`scripts/verify_flutter_mysql_sync.js`) passed all 6 steps against live MySQL backend.
+- Status: DONE
 
 
 ---
@@ -66,6 +90,21 @@ Only mark `DONE` when acceptance criteria are tested. Each agent claims one task
   4. Suites: php artisan test 70 passed (1005 assertions); flutter test 43 passed (analyzer clean on touched files); frontend npm run build clean; live workflow (/tmp/day6_workflow.js vs :8092) 12 PASS 0 FAIL.
   5. Day 6: secrets scan clean (.env ignored, 0 key refs in frontend/mobile); MySQL 8.0.46 live migrate:fresh --seed -> 5 users/42 species/2 trips/8 catches/3 zones (temp instance shut down); advisory publication RBAC covered by existing tests.
 - Remaining blockers (external, unchanged): commit/push (user decision), Meta live probe (key+billing approval), Android APK + real-device test (no JDK), demo video (demo machine), official deadline/submission (user).
+- Status: DONE
+
+---
+- Task ID: P0-09 (Muse Wonder 1.0 fisheries assistant integration — deepen + test)
+- Agent/model and session: Muse Code (muse-wonder-1.0) session 01a18594 2026-10-29 UTC (took over stale IN_PROGRESS claim from MuseWonder-Agent 2026-10-28 per user "continue what has not finished")
+- Branch/worktree: main
+- Files changed:
+  - `backend/tests/Feature/FisheriesAssistantTest.php` (new, 9 tests — the only code change; production implementation already existed in `MetaAiService::queryFisheriesAssistant`/`investigateImageModality` and `AiIdentificationController` SAM→Muse wiring, verified not modified)
+  - `TASKS.md`, `PROJECT_STATE.md`, `DECISIONS.md` (ADR-020)
+- Acceptance criteria / Evidence:
+  1. Image modality verified without billing: mocked probe accepts (200 → supports_image true) and rejects (400 → text-only, sam-3.1 fallback); unconfigured probe and meta-health report modality with zero HTTP calls (Http::assertNothingSent / assertSentCount(1) text-only probe, no image_url payload, no key leakage).
+  2. queryFisheriesAssistant grounded: sent prompt contains KB Kiribati/English/scientific names, SAM summary for ok/unconfigured/image_unavailable/no-box/unauthorized variants, fisher hint, and verbatim anti-invention rules (no alternative species, no invented confidence, lab-only toxicity).
+  3. SAM+KB+Muse combined with no invented species: identify-fish with adversarial Muse advisory naming Te Ingimea at 0.99 still returns KB Te Bwere / Lutjanus gibbus / 0.94, advisory preserved only as meta_model.advisory_notes, SAM segmentation kept as separate evidence.
+  4. Tested: `php artisan test --filter=FisheriesAssistantTest` 9 passed (59 assertions); full `php artisan test` 79 passed (1064 assertions, 0 failures); php -l clean. All Meta calls mocked (Http::fake / forced '' keys).
+- Remaining blockers (external, unchanged): live Meta probe (key + billing approval), P0-03-AI administrative close (owner Day3-Flutter-OfflineGIS to confirm — not taken over), Android APK (no JDK), demo video, official submission (user).
 - Status: DONE
 
 ## Claim and handoff template

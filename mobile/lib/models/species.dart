@@ -9,6 +9,8 @@ class SpeciesItem {
   final String? photoUrl;
   final List<String> visualFeatures;
   final bool aiTrained;
+  final String verificationStatus;
+  final String recordType;
   final String cachedAt;
 
   const SpeciesItem({
@@ -20,6 +22,8 @@ class SpeciesItem {
     this.photoUrl,
     this.visualFeatures = const [],
     this.aiTrained = false,
+    this.verificationStatus = 'verified',
+    this.recordType = 'species',
     required this.cachedAt,
   });
 
@@ -47,6 +51,8 @@ class SpeciesItem {
       photoUrl: json['photo_url'] as String?,
       visualFeatures: traits,
       aiTrained: json['ai_trained'] == true || json['ai_trained'] == 1,
+      verificationStatus: json['verification_status'] as String? ?? 'verified',
+      recordType: json['record_type'] as String? ?? 'species',
       cachedAt: DateTime.now().toIso8601String(),
     );
   }
@@ -61,6 +67,8 @@ class SpeciesItem {
       'photo_url': photoUrl,
       'visual_features': jsonEncode(visualFeatures),
       'ai_trained': aiTrained ? 1 : 0,
+      'verification_status': verificationStatus,
+      'record_type': recordType,
       'cached_at': cachedAt,
     };
   }
@@ -85,6 +93,8 @@ class SpeciesItem {
       photoUrl: map['photo_url'] as String?,
       visualFeatures: traits,
       aiTrained: (map['ai_trained'] as int? ?? 0) == 1,
+      verificationStatus: map['verification_status'] as String? ?? 'verified',
+      recordType: map['record_type'] as String? ?? 'species',
       cachedAt: map['cached_at'] as String? ?? DateTime.now().toIso8601String(),
     );
   }

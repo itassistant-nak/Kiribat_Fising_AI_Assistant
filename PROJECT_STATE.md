@@ -1,5 +1,5 @@
 # Project State
-Updated: 2026-10-29 (P0-10 Day 5/6 complete: catch idempotency live-verified, MySQL 8 seed reproduced, 70 PHPUnit + 43 Flutter pass)
+Updated: 2026-10-29 (P0-11 complete: Flutter online auto-sync & authentication with Laravel/MySQL backend verified live; 48 Flutter tests pass, 79 PHPUnit tests pass; MySQL 8 live sync confirmed)
 
 ## Goal
 Deliver an offline-first Kiribati AI Fisheries Assistant hackathon prototype with real Meta-model fish identification, offline catches and GPS, synchronization, administrator review, and species-specific advisory alerts.
@@ -61,6 +61,11 @@ Deliver an offline-first Kiribati AI Fisheries Assistant hackathon prototype wit
   - Integrated live fisheries reasoning notes into `POST /api/ai/identify-fish` with resilient offline morphological knowledge base fallback.
   - Full alignment with ADR-002: AI species suggestions are advisory and immutably preserved alongside human ground truth verification when creating catches (`POST /api/catches`).
   - Preserved offline-first mobile architecture: Flutter clients record catches locally into SQLite first without external model dependency.
+- **Muse Wonder Fisheries Assistant — P0-09 (`backend/app/Services/MetaAiService.php`):**
+  - `queryFisheriesAssistant()` sends a structured advisory-only prompt (KB Kiribati/English/scientific candidate + SAM 3.1 evidence summary + fisher hint) with verbatim anti-invention rules; Muse never names species or confidence — identity stays KB + human confirmation (ADR-002/020).
+  - `POST /api/ai/identify-fish` combines SAM segmentation → KB primary → Muse advisory (`meta_model.advisory_notes`); adversarial-test proven: an advisory naming another species cannot change the returned identity.
+  - `investigateImageModality()` probes image support only when explicitly called; `GET /api/ai/meta-health` reports modality (muse text-only, sam-3.1 image) without a billable image probe or key leakage.
+  - Verified: 9 new `FisheriesAssistantTest` (all Meta calls mocked); full suite 79 PHPUnit passed (1064 assertions).
 - **Fish Image Correction, AI Re-Identification, and Human Verification (`CorrectionModal.tsx` & `VerificationController.php`):**
   - Enabled fisheries officers and administrators to change or correct fish images on recorded catches via 1-click verified Kiribati specimen presets, direct file uploads (JPEG/PNG/WEBP), or image URLs.
   - Automated Meta AI Vision re-identification executes immediately when a new fish photo is selected, extracting confidence scores, morphological visual features, and pre-selecting the recommended species in the verification form.
@@ -117,12 +122,13 @@ Deliver an offline-first Kiribati AI Fisheries Assistant hackathon prototype wit
   - Next.js production build passes (`npm run build` in 536ms with 0 errors).
 
 ## Current milestone
-P1-06 Day 4 reference-database hardening complete (65 PHPUnit, 981 assertions; catalog 42 with structured verification). P0-08 Day 4 integration remains verified (17/18 workflow steps green with 1 documented FAIL + 2 BLOCKED). Day 5 next: commit backlog, catch idempotency, GPS defaults, MySQL/APK/Meta/video — see `SUBMISSION_CHECKLIST.md §10`.
+P0-09 Muse Wonder fisheries assistant complete (79 PHPUnit, 1064 assertions; SAM+KB+Muse combined, no invented species). P1-06 Day 4 reference-database hardening complete (65 PHPUnit, 981 assertions; catalog 42 with structured verification). P0-08 Day 4 integration remains verified (17/18 workflow steps green with 1 documented FAIL + 2 BLOCKED). Day 5 next: commit backlog, catch idempotency, GPS defaults, MySQL/APK/Meta/video — see `SUBMISSION_CHECKLIST.md §10`.
 
 ## Blockers
 - No blockers for a local-demo submission. Bounded claims: live Meta vision (no key/model), Android APK (no JDK), MySQL live run (sandbox veto) — all documented in `SUBMISSION_CHECKLIST.md` with Day 5 paths. Only Day 1 is committed (user decision pending).
 
 ## Last test run
+- P0-09 (2026-10-29): `php artisan test` 79 passed (1064 assertions) incl. 9 new FisheriesAssistantTest; focused run 9 passed (59 assertions); php -l clean; no production code changed.
 - P0-10 (2026-10-29): `php artisan test` 70 passed (1005 assertions); `flutter test` 43 passed; `npm run build` clean; live workflow 12/12; MySQL 8 seed 5/42/2/8/3.
 - `cd backend && php artisan test` — 65 passed (981 assertions, 0 failures) incl. 9 new ReferenceDatabaseTest (P1-06), verified 2026-10-29; `migrate:fresh --seed` → 42 species (9 verified species, 12 needs_review species, 9 taxonomic_group, 12 non_fish_organism), 5 users.
 - `flutter test` (mobile) — 42 passed (0 failures) incl. photo capture/upload/quality tests, verified 2026-10-28 (writable SDK copy, proxy bypassed for loopback); analyzer clean; `flutter build web` compiles; live multipart photo upload 201 + `photo_url` verified.
@@ -137,7 +143,8 @@ P1-06 Day 4 reference-database hardening complete (65 PHPUnit, 981 assertions; c
 ## Next actions
 1. P1-06 DONE (2026-10-29): reference DB hardened — no further Day 4 backend work unless taxonomy review corrects source spellings (keep as-provided until human verifies).
 2. Day 5: commit Day 2–4 backlog (user decision), then work `SUBMISSION_CHECKLIST.md §10` in order (catch idempotency, GPS defaults, MySQL/APK/Meta/video).
-3. `P0-03-AI` remains CLAIMED by Day3-Flutter-OfflineGIS (implementation + tests green) — confirm with owner and close; do not take over unasked.
+3. P0-09 DONE (2026-10-29): fisheries assistant verified with mocked tests — no further backend work unless a live Meta key/billing approval enables the real probe.
+4. `P0-03-AI` remains CLAIMED by Day3-Flutter-OfflineGIS (implementation + tests green) — confirm with owner and close; do not take over unasked.
 
 ## Handoff log
 | Date/time (timezone) | Agent/session | Work done | Tests and outcome | Next action |
@@ -169,3 +176,6 @@ P1-06 Day 4 reference-database hardening complete (65 PHPUnit, 981 assertions; c
 | 2026-10-29 | P1-06-ReferenceDB-Agent (Muse Code) | Day 4 reference-database hardening: structured verification_status/record_type/scientific_name_as_provided, classified 35-entry seeder, species filters, DB reference_candidates in identify-fish, meta-health image-modality report (no probe), 9 new tests | 65 PHPUnit passed (981 assertions); migrate:fresh --seed 42 species (9/12/9/12), 5 users; php -l clean | Day 5 per SUBMISSION_CHECKLIST §10 (commit, catch idempotency, GPS defaults) |
 | 2026-10-29 14:21 (+12:00) | Repository-Sync-Agent | Committed Days 2–4 backlog (`d9dcdeb`), renamed active branch to `main`, linked remote `git@github.com:itassistant-nak/Kiribat_Fising_AI_Assistant.git`, and pushed full codebase and history to GitHub. | `git status` clean, branch up to date with `origin/main` | Next steps per SUBMISSION_CHECKLIST §10 |
 | 2026-10-29 | P0-10-Day5/6-Agent (Muse Code) | Catch idempotency + GPS-null + Flutter retry/no-rebill + real identify parsing/SAM display; Day 6 QA incl. MySQL live seed fix | 70 PHPUnit, 43 Flutter, Next build clean, live 12/12, MySQL 5/42/2/8/3 | Commit (user), Meta probe (key approval), APK/device/video/submission (external) |
+| 2026-10-29 | P0-09-Agent (Muse Code, session 01a18594) | Finished P0-09 (took over stale claim per user): added 9 mocked FisheriesAssistantTest proving KB+SAM+Muse grounding, no invented species, modality probe/health honesty; production code unchanged | 79 PHPUnit passed (1064 assertions); focused 9/59; php -l clean | P0-03-AI owner close; live Meta probe/APK/video/submission (external/user) |
+| 2026-10-29 16:40 (+12:00) | MySQL-Database-Agent | Created local MySQL database `kiribati_fisheries` on localhost:3306, configured `backend/.env`, migrated and seeded all 11 migrations (5 users, 42 species, 2 trips, 8 catches, 3 zones), imported `kiribati_marine_species_35.sql`, and reloaded backend server. Verified live login and stats API with HTTP 200. | MySQL connection live, 5 users/42 species/35 reference rows in MySQL; `/api/admin/stats` 200 OK | Stack fully operational with MySQL backend |
+| 2026-10-29 17:15 (+12:00) | Flutter-MySQL-Sync-Agent | Built and verified Flutter online auto-sync engine with Laravel/MySQL backend: added Sanctum bearer authentication (`ApiClient.login`, `SyncService.ensureAuthenticated`), periodic auto-sync timer (30s) reacting to pending catches/trips and stale cache, aligned species SQLite table with `verification_status` and `record_type`, created `offline_auto_sync_test.dart` suite, compiled Flutter web bundle, and verified live sync of catches, UUID idempotency, and GPS breadcrumb routes into MySQL. | 48 Flutter tests passed; 79 PHPUnit tests passed; live end-to-end sync script (`verify_flutter_mysql_sync.js`) 6/6 passed against live MySQL; Flutter web compiled and served on :8080 | System ready for live demonstration and submission |
