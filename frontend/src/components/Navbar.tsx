@@ -2,14 +2,15 @@
 
 import React from 'react';
 import { useAuth } from '../context/AuthContext';
-import { ShieldCheck, UserCheck, LogOut, Waves, Fish, Anchor } from 'lucide-react';
+import { ShieldCheck, UserCheck, LogOut, Waves, Fish, Anchor, Sparkles } from 'lucide-react';
 
 interface NavbarProps {
   onRefresh?: () => void;
   isRefreshing?: boolean;
+  onOpenAiModal?: () => void;
 }
 
-export default function Navbar({ onRefresh, isRefreshing }: NavbarProps) {
+export default function Navbar({ onRefresh, isRefreshing, onOpenAiModal }: NavbarProps) {
   const { user, logout, quickLogin, loading } = useAuth();
 
   return (
@@ -40,6 +41,19 @@ export default function Navbar({ onRefresh, isRefreshing }: NavbarProps) {
           <div className="flex items-center space-x-3">
             {user ? (
               <div className="flex items-center space-x-3">
+                {/* AI Fish Identification Helper Button */}
+                {user.is_admin && onOpenAiModal && (
+                  <button
+                    onClick={onOpenAiModal}
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 rounded-lg shadow-sm transition border border-indigo-400/30"
+                    title="Upload fish photo and assist AI with Kiribati name ground truth"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                    <span className="hidden sm:inline">Help AI Identify</span>
+                    <span className="sm:hidden">Identify</span>
+                  </button>
+                )}
+
                 {/* Role Badge */}
                 <div className="flex items-center space-x-2 bg-slate-800/80 border border-slate-700 px-3 py-1.5 rounded-lg text-sm">
                   {user.is_admin ? (

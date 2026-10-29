@@ -36,9 +36,9 @@ export default function StatsCards({ stats, loading, error }: StatsCardsProps) {
 
   const cards = [
     {
-      title: 'Total Catches',
+      title: 'Fishermen Catches',
       value: overview.total_catches.toLocaleString(),
-      subtext: `${overview.total_quantity} total fish count`,
+      subtext: `${overview.total_quantity} fish (genuine catches)`,
       icon: Fish,
       color: 'text-blue-600',
       bgColor: 'bg-blue-50',
@@ -75,7 +75,9 @@ export default function StatsCards({ stats, loading, error }: StatsCardsProps) {
     {
       title: 'Flagged / Blurry',
       value: overview.flagged_catches.toLocaleString(),
-      subtext: 'Requires resubmission',
+      subtext: overview.not_a_catch_count !== undefined && overview.not_a_catch_count > 0
+        ? `${overview.not_a_catch_count} non-catches excluded`
+        : 'Requires resubmission',
       icon: ShieldAlert,
       color: 'text-rose-600',
       bgColor: 'bg-rose-50',

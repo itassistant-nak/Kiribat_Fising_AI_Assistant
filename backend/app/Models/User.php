@@ -41,6 +41,16 @@ class User extends Authenticatable
         return in_array($this->role, ['admin', 'reviewer']);
     }
 
+    public function canPublishAdvisory(): bool
+    {
+        return $this->role === 'admin';
+    }
+
+    public function canEditAdvisory(): bool
+    {
+        return in_array($this->role, ['admin', 'reviewer']);
+    }
+
     public function catches()
     {
         return $this->hasMany(CatchRecord::class, 'user_id');

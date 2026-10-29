@@ -12,19 +12,29 @@ class StatsController extends Controller
 {
     public function index(Request $request)
     {
-        $totalCatches = CatchRecord::count();
-        $totalWeightKg = (float) CatchRecord::sum('weight_kg');
-        $totalQuantity = (int) CatchRecord::sum('quantity');
+        // Rule: Only the catch from fishermen counts towards official catch metrics
+        $fisherCatches = CatchRecord::where('is_catch', true)
+            ->where('verification_status', '!=', 'not_a_catch')
+            ->whereHas('user', function ($q) {
+                $q->where('role', 'fisher');
+            });
 
-        $pendingCount = CatchRecord::where('verification_status', 'pending')->count();
-        $verifiedCount = CatchRecord::whereIn('verification_status', ['verified', 'corrected'])->count();
+        $totalCatches = (clone $fisherCatches)->count();
+        $totalWeightKg = (float) (clone $fisherCatches)->sum('weight_kg');
+        $totalQuantity = (int) (clone $fisherCatches)->sum('quantity');
+
+        $pendingCount = (clone $fisherCatches)->where('verification_status', 'pending')->count();
+        $verifiedCount = (clone $fisherCatches)->whereIn('verification_status', ['verified', 'corrected'])->count();
         $flaggedCount = CatchRecord::where('verification_status', 'flagged')->count();
+        $notACatchCount = CatchRecord::where(function ($q) {
+            $q->where('is_catch', false)->orWhere('verification_status', 'not_a_catch');
+        })->count();
 
         $monitoredSpeciesCount = Species::count();
         $activeFishersCount = User::where('role', 'fisher')->count();
 
-        // Species distribution
-        $speciesBreakdown = CatchRecord::with('species')
+        // Species distribution — only genuine catches from fishermen
+        $speciesBreakdown = (clone $fisherCatches)->with('species')
             ->select('species_id', DB::raw('count(*) as count'), DB::raw('sum(weight_kg) as total_weight'))
             ->whereNotNull('species_id')
             ->groupBy('species_id')
@@ -49,6 +59,7 @@ class StatsController extends Controller
                 'pending_verification' => $pendingCount,
                 'verified_catches' => $verifiedCount,
                 'flagged_catches' => $flaggedCount,
+                'not_a_catch_count' => $notACatchCount,
                 'monitored_species' => $monitoredSpeciesCount,
                 'active_fishers' => $activeFishersCount,
             ],

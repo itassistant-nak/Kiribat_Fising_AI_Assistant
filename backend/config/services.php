@@ -35,4 +35,15 @@ return [
         ],
     ],
 
+    'meta_ai' => [
+        'endpoint' => env('META_AI_ENDPOINT', 'https://api.meta.ai/v1/responses'),
+        'model' => env('META_AI_MODEL', 'muse-wonder-1.0'),
+        'api_key' => env('MODEL_API_KEY'),
+        'timeout' => (int) env('META_AI_TIMEOUT', 15),
+        // SAM 3.1 image segmentation on the same Meta Model API (OpenAI-compatible)
+        'base_url' => env('META_AI_BASE_URL', 'https://api.meta.ai/v1'),
+        'sam_model' => env('META_AI_SAM_MODEL', 'sam-3.1'),
+        'sam_timeout' => (int) env('META_AI_SAM_TIMEOUT', 60),
+    ],
+
 ];

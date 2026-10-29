@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { CatchRecord } from '../lib/api';
-import { Sparkles, CheckCircle2, Clock, AlertTriangle, MapPin, Edit3, Image as ImageIcon } from 'lucide-react';
+import { Sparkles, CheckCircle2, Clock, AlertTriangle, MapPin, Edit3, Image as ImageIcon, Camera, Ban } from 'lucide-react';
 
 interface CatchTableProps {
   catches: CatchRecord[];
@@ -87,22 +87,40 @@ export default function CatchTable({
                   {/* Photo & Fisher */}
                   <td className="py-3 px-4">
                     <div className="flex items-center space-x-3">
-                      <div className="relative w-12 h-12 rounded-lg bg-slate-100 overflow-hidden flex-shrink-0 border border-slate-200">
+                      <button
+                        type="button"
+                        onClick={() => onVerify(c)}
+                        className="group/photo relative w-12 h-12 rounded-lg bg-slate-100 overflow-hidden flex-shrink-0 border border-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer text-left"
+                        title="Click to view/change fish photograph and verify with AI"
+                      >
                         {c.photo_url ? (
                           <img
                             src={c.photo_url}
                             alt={c.ai_species_suggestion || 'Fish catch'}
-                            className="w-full h-full object-cover"
+                            className="w-full h-full object-cover group-hover/photo:scale-105 transition"
                           />
                         ) : (
                           <div className="w-full h-full flex items-center justify-center text-slate-400">
                             <ImageIcon className="w-5 h-5" />
                           </div>
                         )}
-                      </div>
+                        {(c.verification_status === 'not_a_catch' || c.is_catch === false) && (
+                          <div className="absolute top-0.5 left-0.5 bg-rose-700/95 text-white text-[8px] font-bold px-1 rounded shadow-sm z-10">
+                            Non-Catch
+                          </div>
+                        )}
+                        <div className="absolute inset-0 bg-slate-900/60 opacity-0 group-hover/photo:opacity-100 flex items-center justify-center text-white transition">
+                          <Camera className="w-4 h-4" />
+                        </div>
+                      </button>
                       <div>
-                        <div className="font-semibold text-slate-900">
-                          {c.user?.name || `Fisher #${c.user_id}`}
+                        <div className="font-semibold text-slate-900 flex items-center gap-1.5">
+                          <span>{c.user?.name || `Fisher #${c.user_id}`}</span>
+                          {c.is_fisher_catch && (
+                            <span className="text-[9px] font-bold bg-blue-50 text-blue-700 px-1.5 py-0.2 rounded border border-blue-200">
+                              Fisherman
+                            </span>
+                          )}
                         </div>
                         <div className="text-[11px] text-slate-500">
                           {c.trip?.vessel_name ? `Vessel: ${c.trip.vessel_name}` : 'Artisanal catch'}
@@ -144,12 +162,25 @@ export default function CatchTable({
 
                   {/* Quantity & Weight */}
                   <td className="py-3 px-4">
-                    <div className="font-semibold text-slate-800">
-                      {c.weight_kg.toFixed(2)} kg
-                    </div>
-                    <div className="text-[11px] text-slate-500">
-                      {c.quantity} {c.quantity === 1 ? 'fish' : 'fishes'}
-                    </div>
+                    {c.verification_status === 'not_a_catch' || c.is_catch === false ? (
+                      <div>
+                        <div className="font-semibold text-slate-400 line-through">
+                          {c.weight_kg.toFixed(2)} kg
+                        </div>
+                        <div className="text-[10px] font-bold text-rose-700 bg-rose-50 border border-rose-200 px-1.5 py-0.5 rounded inline-block mt-0.5">
+                          Excluded (Not a Catch)
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="font-semibold text-slate-800">
+                          {c.weight_kg.toFixed(2)} kg
+                        </div>
+                        <div className="text-[11px] text-slate-500">
+                          {c.quantity} {c.quantity === 1 ? 'fish' : 'fishes'}
+                        </div>
+                      </>
+                    )}
                   </td>
 
                   {/* Date & Time */}
@@ -162,22 +193,30 @@ export default function CatchTable({
 
                   {/* Verification Status Badge */}
                   <td className="py-3 px-4">
-                    {c.verification_status === 'verified' && (
+                    {(c.verification_status === 'not_a_catch' || c.is_catch === false) && (
+                      <span
+                        className="inline-flex items-center gap-1 bg-rose-50 text-rose-700 border border-rose-200 px-2 py-0.5 rounded-full font-bold text-[11px]"
+                        title="Image changed by admin — not a catch from fisherman"
+                      >
+                        <Ban className="w-3 h-3 text-rose-600" /> Not a Catch
+                      </span>
+                    )}
+                    {c.is_catch !== false && c.verification_status === 'verified' && (
                       <span className="inline-flex items-center gap-1 bg-emerald-50 text-emerald-700 border border-emerald-200 px-2 py-0.5 rounded-full font-semibold text-[11px]">
                         <CheckCircle2 className="w-3 h-3" /> Verified
                       </span>
                     )}
-                    {c.verification_status === 'corrected' && (
+                    {c.is_catch !== false && c.verification_status === 'corrected' && (
                       <span className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 rounded-full font-semibold text-[11px]">
                         <CheckCircle2 className="w-3 h-3" /> Corrected
                       </span>
                     )}
-                    {c.verification_status === 'pending' && (
+                    {c.is_catch !== false && c.verification_status === 'pending' && (
                       <span className="inline-flex items-center gap-1 bg-amber-50 text-amber-700 border border-amber-200 px-2 py-0.5 rounded-full font-semibold text-[11px]">
                         <Clock className="w-3 h-3" /> Pending Review
                       </span>
                     )}
-                    {c.verification_status === 'flagged' && (
+                    {c.is_catch !== false && c.verification_status === 'flagged' && (
                       <span className="inline-flex items-center gap-1 bg-rose-50 text-rose-700 border border-rose-200 px-2 py-0.5 rounded-full font-semibold text-[11px]">
                         <AlertTriangle className="w-3 h-3" /> Flagged
                       </span>

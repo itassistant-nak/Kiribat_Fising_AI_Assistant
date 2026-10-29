@@ -14,6 +14,23 @@ backend/storage/*.key
 backend/database/*.sqlite
 backend/database/*.sqlite-journal
 
+# Flutter
+mobile/build/
+mobile/.dart_tool/
+mobile/.flutter-plugins*
+mobile/android/app/debug/
+mobile/android/local.properties
+mobile/android/.gradle/
+mobile/linux/flutter/ephemeral/
+mobile/ios/Pods/
+*.iml
+
+# Local environment & uploads (never commit)
+backend/public/storage
+.toolchain/
+backend/public/uploads/
+backend/storage/app/public/catches/
+
 # Logs & temp
 *.log
 npm-debug.log*

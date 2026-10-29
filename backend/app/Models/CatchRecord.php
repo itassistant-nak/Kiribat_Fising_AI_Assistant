@@ -12,6 +12,7 @@ class CatchRecord extends Model
     protected $fillable = [
         'trip_id',
         'user_id',
+        'client_uuid',
         'species_id',
         'ai_species_suggestion',
         'ai_confidence',
@@ -23,6 +24,7 @@ class CatchRecord extends Model
         'latitude',
         'longitude',
         'verification_status',
+        'is_catch',
         'verified_by_user_id',
         'verified_at',
         'verification_notes',
@@ -35,9 +37,22 @@ class CatchRecord extends Model
         'weight_kg' => 'float',
         'latitude' => 'float',
         'longitude' => 'float',
+        'is_catch' => 'boolean',
         'caught_at' => 'datetime',
         'verified_at' => 'datetime',
     ];
+
+    /**
+     * Scope to only genuine catches submitted by fishers.
+     */
+    public function scopeOnlyFisherCatches($query)
+    {
+        return $query->where('is_catch', true)
+            ->where('verification_status', '!=', 'not_a_catch')
+            ->whereHas('user', function ($q) {
+                $q->where('role', 'fisher');
+            });
+    }
 
     public function user()
     {

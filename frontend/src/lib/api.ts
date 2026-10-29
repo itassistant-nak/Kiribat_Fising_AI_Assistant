@@ -20,8 +20,15 @@ export interface Species {
   kiribati_name: string;
   english_name: string;
   scientific_name: string;
-  ciguatera_risk: 'low' | 'medium' | 'high' | 'none';
+  ciguatera_risk: 'low' | 'medium' | 'high' | 'extreme' | 'unknown' | 'none';
   notes?: string;
+  photo_url?: string | null;
+  catches_count?: number;
+  advisory_zones_count?: number;
+  visual_features?: string[];
+  ciguatera_warning?: string | null;
+  ai_trained?: boolean;
+  confidence_range?: [number, number];
 }
 
 export interface CatchRecord {
@@ -39,7 +46,9 @@ export interface CatchRecord {
   latitude: number | null;
   longitude: number | null;
   gps_protected?: boolean;
-  verification_status: 'pending' | 'verified' | 'corrected' | 'flagged';
+  is_catch?: boolean;
+  is_fisher_catch?: boolean;
+  verification_status: 'pending' | 'verified' | 'corrected' | 'flagged' | 'not_a_catch';
   verified_by_user_id: number | null;
   verified_at: string | null;
   verification_notes: string | null;
@@ -85,6 +94,7 @@ export interface DashboardStats {
     pending_verification: number;
     verified_catches: number;
     flagged_catches: number;
+    not_a_catch_count?: number;
     monitored_species: number;
     active_fishers: number;
   };
@@ -106,6 +116,18 @@ export interface CatchFilters {
   search?: string;
 }
 
+export interface MetaAiHealthResponse {
+  status: 'connected' | 'degraded' | 'unconfigured';
+  endpoint: string;
+  model: string;
+  has_api_key: boolean;
+  latency_ms: number;
+  response?: string | null;
+  message: string;
+  tested_at: string;
+  disclaimer: string;
+}
+
 function getToken(): string | null {
   if (typeof window === 'undefined') return null;
   return localStorage.getItem('kiribati_auth_token');
@@ -124,7 +146,7 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
   const token = getToken();
   const headers: Record<string, string> = {
     'Accept': 'application/json',
-    'Content-Type': 'application/json',
+    ...(options.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
     ...(options.headers as Record<string, string> || {}),
   };
 
@@ -210,23 +232,54 @@ export const api = {
   // Verification & Correction
   async verifyCatch(
     id: number,
-    action: 'approve' | 'correct' | 'flag',
+    action: 'approve' | 'correct' | 'flag' | 'not_a_catch',
     speciesId?: number,
-    notes?: string
-  ): Promise<{ message: string; catch: CatchRecord }> {
-    return request<{ message: string; catch: CatchRecord }>(`/admin/catches/${id}/verify`, {
+    notes?: string,
+    options?: {
+      photoUrl?: string;
+      photoFile?: File | null;
+      aiSpeciesSuggestion?: string;
+      aiConfidence?: number;
+    }
+  ): Promise<{ message: string; catch: CatchRecord; photo_updated?: boolean }> {
+    if (options?.photoFile) {
+      const formData = new FormData();
+      formData.append('action', action);
+      if (speciesId) formData.append('species_id', String(speciesId));
+      if (notes) formData.append('verification_notes', notes);
+      formData.append('photo', options.photoFile);
+      if (options.aiSpeciesSuggestion) {
+        formData.append('ai_species_suggestion', options.aiSpeciesSuggestion);
+      }
+      if (options.aiConfidence !== undefined) {
+        formData.append('ai_confidence', String(options.aiConfidence));
+      }
+      return request<{ message: string; catch: CatchRecord; photo_updated?: boolean }>(`/admin/catches/${id}/verify`, {
+        method: 'POST',
+        body: formData,
+      });
+    }
+
+    return request<{ message: string; catch: CatchRecord; photo_updated?: boolean }>(`/admin/catches/${id}/verify`, {
       method: 'POST',
       body: JSON.stringify({
         action,
         species_id: speciesId,
         verification_notes: notes,
+        photo_url: options?.photoUrl,
+        ai_species_suggestion: options?.aiSpeciesSuggestion,
+        ai_confidence: options?.aiConfidence,
       }),
     });
   },
 
   // Species catalog
-  async getSpecies(): Promise<{ data: Species[]; count: number }> {
-    return request<{ data: Species[]; count: number }>('/species');
+  async getSpecies(filters?: { search?: string; ciguatera_risk?: string }): Promise<{ data: Species[]; count: number; knowledge_base_count?: number }> {
+    const params = new URLSearchParams();
+    if (filters?.search) params.set('search', filters.search);
+    if (filters?.ciguatera_risk && filters.ciguatera_risk !== 'all') params.set('ciguatera_risk', filters.ciguatera_risk);
+    const qs = params.toString() ? `?${params.toString()}` : '';
+    return request<{ data: Species[]; count: number; knowledge_base_count?: number }>(`/species${qs}`);
   },
 
   // Trips & GPS Routes
@@ -237,4 +290,283 @@ export const api = {
   async getTripRoute(id: number): Promise<TripDetail> {
     return request<TripDetail>(`/trips/${id}/route`);
   },
+
+  // Advisory Zones & Fish Poisoning Management
+  async getAdvisoryZones(filters: { status?: string; classification?: string; species_id?: string; search?: string } = {}): Promise<{ data: AdvisoryZone[]; count: number; is_staff: boolean; safety_disclaimer: string }> {
+    const params = new URLSearchParams();
+    if (filters.status && filters.status !== 'all') params.set('status', filters.status);
+    if (filters.classification && filters.classification !== 'all') params.set('classification', filters.classification);
+    if (filters.species_id && filters.species_id !== 'all') params.set('species_id', filters.species_id);
+    if (filters.search) params.set('search', filters.search);
+
+    const qs = params.toString() ? `?${params.toString()}` : '';
+    return request<{ data: AdvisoryZone[]; count: number; is_staff: boolean; safety_disclaimer: string }>(`/advisory-zones${qs}`);
+  },
+
+  async getAdvisoryZone(id: number): Promise<{ data: AdvisoryZone }> {
+    return request<{ data: AdvisoryZone }>(`/advisory-zones/${id}`);
+  },
+
+  async createAdvisoryZone(payload: {
+    title: string;
+    concern: string;
+    evidence?: string;
+    description?: string;
+    classification: 'suspected' | 'under_investigation' | 'authority-confirmed';
+    status?: 'draft' | 'under_investigation' | 'approved' | 'published';
+    source?: string;
+    review_date?: string;
+    polygon_geojson: GeoJsonPolygon;
+    species_ids?: number[];
+  }): Promise<{ message: string; data: AdvisoryZone }> {
+    return request<{ message: string; data: AdvisoryZone }>('/advisory-zones', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async updateAdvisoryZone(id: number, payload: {
+    title?: string;
+    concern?: string;
+    evidence?: string;
+    description?: string;
+    classification?: 'suspected' | 'under_investigation' | 'authority-confirmed';
+    status?: 'draft' | 'under_investigation' | 'approved' | 'published' | 'archived';
+    source?: string;
+    review_date?: string;
+    polygon_geojson?: GeoJsonPolygon;
+    species_ids?: number[];
+  }): Promise<{ message: string; data: AdvisoryZone }> {
+    return request<{ message: string; data: AdvisoryZone }>(`/advisory-zones/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async publishAdvisoryZone(id: number): Promise<{ message: string; data: AdvisoryZone }> {
+    return request<{ message: string; data: AdvisoryZone }>(`/advisory-zones/${id}/publish`, {
+      method: 'POST',
+    });
+  },
+
+  async unpublishAdvisoryZone(id: number): Promise<{ message: string; data: AdvisoryZone }> {
+    return request<{ message: string; data: AdvisoryZone }>(`/advisory-zones/${id}/unpublish`, {
+      method: 'POST',
+    });
+  },
+
+  async deleteAdvisoryZone(id: number): Promise<{ message: string }> {
+    return request<{ message: string }>(`/advisory-zones/${id}`, {
+      method: 'DELETE',
+    });
+  },
+
+  async checkPointAdvisory(latitude: number, longitude: number): Promise<CheckPointResult> {
+    return request<CheckPointResult>('/advisory-zones/check-point', {
+      method: 'POST',
+      body: JSON.stringify({ latitude, longitude }),
+    });
+  },
+
+  async getAdvisoryAuditLogs(id: number): Promise<{ advisory_zone_id: number; zone_title: string; audit_logs: AdvisoryAuditLog[]; count: number }> {
+    return request<{ advisory_zone_id: number; zone_title: string; audit_logs: AdvisoryAuditLog[]; count: number }>(`/advisory-zones/${id}/audit-logs`);
+  },
+
+  async identifyFish(payload: { image?: File | string; image_url?: string; hint?: string }): Promise<AiIdentificationResponse> {
+    if (payload.image instanceof File) {
+      const formData = new FormData();
+      formData.append('image', payload.image);
+      if (payload.hint) formData.append('hint', payload.hint);
+      return request<AiIdentificationResponse>('/ai/identify-fish', {
+        method: 'POST',
+        body: formData,
+      });
+    }
+
+    return request<AiIdentificationResponse>('/ai/identify-fish', {
+      method: 'POST',
+      body: JSON.stringify({
+        image: typeof payload.image === 'string' ? payload.image : undefined,
+        image_url: payload.image_url,
+        hint: payload.hint,
+      }),
+    });
+  },
+
+  async getMetaAiHealth(): Promise<MetaAiHealthResponse> {
+    return request<MetaAiHealthResponse>('/ai/meta-health');
+  },
+
+  async createCatch(payload: {
+    species_id?: number;
+    kiribati_name?: string;
+    english_name?: string;
+    scientific_name?: string;
+    photo_url?: string;
+    photo?: File;
+    ai_species_suggestion?: string;
+    ai_confidence?: number;
+    weight_kg?: number;
+    quantity?: number;
+    latitude?: number;
+    longitude?: number;
+    verification_notes?: string;
+    verification_status?: 'pending' | 'verified' | 'corrected' | 'flagged';
+  }): Promise<{ message: string; catch: CatchRecord }> {
+    if (payload.photo instanceof File) {
+      const formData = new FormData();
+      Object.entries(payload).forEach(([key, val]) => {
+        if (val !== undefined && val !== null) {
+          if (key === 'photo' && val instanceof File) {
+            formData.append('photo', val);
+          } else {
+            formData.append(key, String(val));
+          }
+        }
+      });
+      return request<{ message: string; catch: CatchRecord }>('/catches', {
+        method: 'POST',
+        body: formData,
+      });
+    }
+
+    return request<{ message: string; catch: CatchRecord }>('/catches', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async createSpecies(payload: {
+    kiribati_name: string;
+    english_name: string;
+    scientific_name?: string;
+    ciguatera_risk?: 'low' | 'medium' | 'high' | 'extreme' | 'unknown';
+    photo_url?: string;
+    notes?: string;
+  }): Promise<{ message: string; species: Species }> {
+    return request<{ message: string; species: Species }>('/species', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async updateSpecies(
+    id: number,
+    payload: {
+      kiribati_name?: string;
+      english_name?: string;
+      scientific_name?: string;
+      ciguatera_risk?: 'low' | 'medium' | 'high' | 'extreme' | 'unknown' | 'none';
+      photo_url?: string;
+      notes?: string;
+      visual_features?: string[];
+    }
+  ): Promise<{ message: string; species: Species }> {
+    return request<{ message: string; species: Species }>(`/species/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    });
+  },
 };
+
+export interface AiIdentificationCandidate {
+  kiribati_name: string;
+  english_name: string;
+  scientific_name: string;
+  confidence: number;
+}
+
+export interface AiIdentificationResult {
+  species_id?: number | null;
+  kiribati_name: string;
+  english_name: string;
+  scientific_name: string;
+  confidence: number;
+  ciguatera_risk: 'low' | 'medium' | 'high' | 'extreme' | 'unknown';
+  ciguatera_warning?: string;
+  visual_features: string[];
+  model: string;
+  model_version: string;
+  analyzed_at: string;
+  candidates: AiIdentificationCandidate[];
+}
+
+export interface AiIdentificationResponse {
+  status: string;
+  image_url: string;
+  identification: AiIdentificationResult;
+  disclaimer: string;
+}
+
+export interface GeoJsonPolygon {
+  type: 'Polygon';
+  coordinates: number[][][];
+}
+
+export interface AdvisoryZoneSpecies extends Species {
+  pivot?: {
+    risk_level: 'low' | 'medium' | 'high' | 'extreme';
+    notes?: string;
+  };
+}
+
+export interface AdvisoryZone {
+  id: number;
+  title: string;
+  description?: string | null;
+  concern: string;
+  evidence?: string | null;
+  classification: 'suspected' | 'under_investigation' | 'authority-confirmed';
+  status: 'draft' | 'under_investigation' | 'approved' | 'published' | 'archived';
+  polygon_geojson: GeoJsonPolygon;
+  source: string;
+  review_date?: string | null;
+  created_by_user_id: number;
+  updated_by_user_id?: number | null;
+  approved_by_user_id?: number | null;
+  approved_at?: string | null;
+  published_at?: string | null;
+  created_at: string;
+  updated_at: string;
+  species?: AdvisoryZoneSpecies[];
+  creator?: { id: number; name: string; role: string };
+  updater?: { id: number; name: string; role: string };
+  approver?: { id: number; name: string; role: string };
+  audit_logs?: AdvisoryAuditLog[];
+}
+
+export interface AdvisoryAuditLog {
+  id: number;
+  advisory_zone_id: number;
+  user_id: number;
+  action: string;
+  changes?: Record<string, unknown> | null;
+  notes?: string | null;
+  ip_address?: string | null;
+  created_at: string;
+  user?: {
+    id: number;
+    name: string;
+    role: string;
+    email: string;
+  };
+}
+
+export interface CheckPointResult {
+  inside_advisory_zone: boolean;
+  latitude: number;
+  longitude: number;
+  zones_count: number;
+  matching_zones: Array<{
+    id: number;
+    title: string;
+    concern: string;
+    evidence?: string | null;
+    classification: string;
+    source: string;
+    review_date?: string | null;
+    species: Species[];
+  }>;
+  affected_species: Species[];
+  safety_notice: string;
+}

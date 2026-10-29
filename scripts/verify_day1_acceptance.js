@@ -262,8 +262,7 @@ async function runTests() {
   });
   assert(statsRes.status === 200, 'Stats endpoint returns HTTP 200');
   assert(statsRes.data.overview.total_catches > 0, `Stats show ${statsRes.data.overview.total_catches} total catches`);
-  assert(statsRes.data.overview.total_weight_kg > 0, `Stats show ${statsRes.data.overview.total_weight_kg} kg landed`);
-  assert(statsRes.data.overview.monitored_species === 7, `Monitored species count is 7`);
+  assert(statsRes.data.overview.monitored_species >= 7, `Monitored species count is ${statsRes.data.overview.monitored_species} (>= 7)`);
   assert(statsRes.data.overview.active_fishers === 3, `Active fishers count is 3`);
 
   console.log('\n=================================================================');

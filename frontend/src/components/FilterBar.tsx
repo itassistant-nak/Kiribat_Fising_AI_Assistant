@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { CatchFilters, Species } from '../lib/api';
-import { Search, Filter, RotateCcw, Calendar, CheckCircle2, Clock, AlertTriangle, Layers } from 'lucide-react';
+import { Search, Filter, RotateCcw, Calendar, CheckCircle2, Clock, AlertTriangle, Layers, Sparkles, Ban, Fish } from 'lucide-react';
 
 interface FilterBarProps {
   filters: CatchFilters;
@@ -52,10 +52,13 @@ export default function FilterBar({
             <Filter className="w-3.5 h-3.5" /> Status:
           </span>
           {[
-            { id: 'all', label: 'All Catches', icon: Layers },
-            { id: 'pending', label: 'Pending Review', icon: Clock, badge: 'Needs AI Check' },
+            { id: 'all', label: 'All Records', icon: Layers },
+            { id: 'only_fishermen', label: 'Fishermen Catches Only', icon: Fish },
+            { id: 'ai_identified', label: 'AI Identified', icon: Sparkles },
+            { id: 'pending', label: 'Pending Review', icon: Clock },
             { id: 'verified', label: 'Verified', icon: CheckCircle2 },
             { id: 'flagged', label: 'Flagged', icon: AlertTriangle },
+            { id: 'not_a_catch', label: 'Not a Catch', icon: Ban },
           ].map((tab) => {
             const Icon = tab.icon;
             const isActive = (filters.status || 'all') === tab.id;

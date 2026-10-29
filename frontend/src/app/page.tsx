@@ -2,15 +2,61 @@
 
 import React, { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import dynamic from 'next/dynamic';
 import { useAuth } from '../context/AuthContext';
 import Navbar from '../components/Navbar';
 import StatsCards from '../components/StatsCards';
 import FilterBar from '../components/FilterBar';
 import CatchTable from '../components/CatchTable';
-import FisheriesMap from '../components/FisheriesMap';
 import CorrectionModal from '../components/CorrectionModal';
-import { api, CatchRecord, Species, DashboardStats, CatchFilters } from '../lib/api';
-import { ShieldAlert, RefreshCw, AlertCircle, Lock, ArrowRight, UserCheck } from 'lucide-react';
+import AdvisoryManager from '../components/AdvisoryManager';
+import AiFishIdentifierModal from '../components/AiFishIdentifierModal';
+import SpeciesCatalog from '../components/SpeciesCatalog';
+import { api, CatchRecord, Species, DashboardStats, CatchFilters, AdvisoryZone, GeoJsonPolygon } from '../lib/api';
+import { ShieldAlert, RefreshCw, AlertCircle, Lock, ArrowRight, UserCheck, Fish, AlertOctagon, Layers, Sparkles, BookOpen } from 'lucide-react';
+
+const FisheriesMap = dynamic(() => import('../components/FisheriesMap'), {
+  ssr: false,
+  loading: () => (
+    <div
+      className="w-full bg-slate-100 rounded-xl flex items-center justify-center border border-slate-200"
+      style={{ height: '520px', minHeight: '520px' }}
+    >
+      <div className="flex items-center gap-2 text-slate-500 text-xs">
+        <div className="w-4 h-4 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+        <span>Loading Fisheries GPS Map...</span>
+      </div>
+    </div>
+  ),
+});
+
+const AdvisoryPolygonMap = dynamic(() => import('../components/AdvisoryPolygonMap'), {
+  ssr: false,
+  loading: () => (
+    <div
+      className="w-full bg-slate-100 rounded-xl flex items-center justify-center border border-slate-200"
+      style={{ height: '520px', minHeight: '520px' }}
+    >
+      <div className="flex items-center gap-2 text-slate-500 text-xs">
+        <div className="w-4 h-4 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+        <span>Loading Advisory Zones GIS Map...</span>
+      </div>
+    </div>
+  ),
+});
+
+const DEFAULT_BETIO_POLYGON: GeoJsonPolygon = {
+  type: 'Polygon',
+  coordinates: [
+    [
+      [172.915, 1.35],
+      [172.935, 1.35],
+      [172.935, 1.37],
+      [172.915, 1.37],
+      [172.915, 1.35],
+    ],
+  ],
+};
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -33,10 +79,21 @@ export default function DashboardPage() {
   const [loadingData, setLoadingData] = useState(true);
   const [apiError, setApiError] = useState<string | null>(null);
 
+  // Tab State: 'catches' vs 'advisories' vs 'species'
+  const [activeTab, setActiveTab] = useState<'catches' | 'advisories' | 'species'>('catches');
+
   // Selected catch for map centering & review modal
   const [selectedCatch, setSelectedCatch] = useState<CatchRecord | null>(null);
   const [reviewCatch, setReviewCatch] = useState<CatchRecord | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isAiModalOpen, setIsAiModalOpen] = useState(false);
+  const [aiModalSpecies, setAiModalSpecies] = useState<Species | null>(null);
+
+  // Advisory Zones State
+  const [advisoryZones, setAdvisoryZones] = useState<AdvisoryZone[]>([]);
+  const [selectedZone, setSelectedZone] = useState<AdvisoryZone | null>(null);
+  const [drawnPolygon, setDrawnPolygon] = useState<GeoJsonPolygon | null>(DEFAULT_BETIO_POLYGON);
+  const [isDrawingMode, setIsDrawingMode] = useState<boolean>(false);
 
   // Load Dashboard Data
   const loadDashboardData = useCallback(async () => {
@@ -52,23 +109,26 @@ export default function DashboardPage() {
     setApiError(null);
 
     try {
-      // Fetch stats, species, and filtered catches concurrently
-      const [statsRes, speciesRes, catchesRes] = await Promise.all([
+      // Fetch stats, species, filtered catches, and advisory zones concurrently
+      const [statsRes, speciesRes, catchesRes, zonesRes] = await Promise.all([
         api.getStats(),
         api.getSpecies(),
         api.getCatches(filters),
+        api.getAdvisoryZones(),
       ]);
 
       setStats(statsRes);
       setSpeciesList(speciesRes.data);
       setCatches(catchesRes.data);
       setCanViewPreciseGps(catchesRes.can_view_precise_gps);
+      setAdvisoryZones(zonesRes.data);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Error loading fisheries data';
       setApiError(msg);
       // Ensure no invented/hallucinated data is displayed on error
       setCatches([]);
       setStats(null);
+      setAdvisoryZones([]);
     } finally {
       setLoadingData(false);
     }
@@ -97,13 +157,19 @@ export default function DashboardPage() {
   };
 
   const handleSubmitVerification = async (
-    action: 'approve' | 'correct' | 'flag',
+    action: 'approve' | 'correct' | 'flag' | 'not_a_catch',
     speciesId?: number,
-    notes?: string
+    notes?: string,
+    options?: {
+      photoUrl?: string;
+      photoFile?: File | null;
+      aiSpeciesSuggestion?: string;
+      aiConfidence?: number;
+    }
   ) => {
     if (!reviewCatch) return;
 
-    const res = await api.verifyCatch(reviewCatch.id, action, speciesId, notes);
+    const res = await api.verifyCatch(reviewCatch.id, action, speciesId, notes, options);
 
     // Update local state with the returned catch
     setCatches((prev) =>
@@ -180,7 +246,14 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
-      <Navbar onRefresh={loadDashboardData} isRefreshing={loadingData} />
+      <Navbar
+        onRefresh={loadDashboardData}
+        isRefreshing={loadingData}
+        onOpenAiModal={() => {
+          setAiModalSpecies(null);
+          setIsAiModalOpen(true);
+        }}
+      />
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
         {/* Header Title & Sync Status */}
@@ -195,6 +268,18 @@ export default function DashboardPage() {
           </div>
 
           <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                setAiModalSpecies(null);
+                setIsAiModalOpen(true);
+              }}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-bold text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 rounded-lg shadow-sm transition border border-indigo-400/30"
+              title="Upload a fish specimen photo to assist Meta AI Vision and confirm local Kiribati name"
+            >
+              <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+              <span>Help AI Identify Fish (Upload Photo)</span>
+            </button>
+
             <button
               onClick={loadDashboardData}
               disabled={loadingData}
@@ -232,46 +317,154 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/* 1. Dashboard Statistics Cards */}
-        <StatsCards stats={stats} loading={loadingData} error={apiError} />
-
-        {/* 2. Interactive Leaflet GPS Map & Trip Routes */}
-        <div id="fisheries-map-section">
-          <FisheriesMap
-            catches={catches}
-            selectedCatch={selectedCatch}
-            canViewPreciseGps={canViewPreciseGps}
-          />
-        </div>
-
-        {/* 3. Filter Toolbar */}
-        <FilterBar
-          filters={filters}
-          onFilterChange={setFilters}
-          speciesList={speciesList}
-          totalMatches={catches.length}
-          loading={loadingData}
-        />
-
-        {/* 4. Catch Lists & Human AI Verification Table */}
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">
-              Recorded Catches & AI Species Suggestions
-            </h3>
-            <span className="text-xs text-slate-500">
-              Showing {catches.length} {catches.length === 1 ? 'catch' : 'catches'}
+        {/* Primary Navigation Tabs */}
+        <div className="flex border-b border-slate-200 gap-6">
+          <button
+            type="button"
+            onClick={() => setActiveTab('catches')}
+            className={`pb-3 text-xs sm:text-sm font-bold flex items-center gap-2 border-b-2 transition ${
+              activeTab === 'catches'
+                ? 'border-blue-600 text-blue-600'
+                : 'border-transparent text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            <Fish className="w-4 h-4" />
+            <span>Catches & AI Verification</span>
+            <span className="ml-1 text-[11px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 font-semibold">
+              {catches.length}
             </span>
-          </div>
+          </button>
 
-          <CatchTable
-            catches={catches}
-            loading={loadingData}
-            onVerify={handleOpenReview}
-            onSelectOnMap={handleSelectOnMap}
-            selectedCatchId={selectedCatch?.id}
-          />
+          <button
+            type="button"
+            onClick={() => setActiveTab('advisories')}
+            className={`pb-3 text-xs sm:text-sm font-bold flex items-center gap-2 border-b-2 transition ${
+              activeTab === 'advisories'
+                ? 'border-red-600 text-red-600'
+                : 'border-transparent text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            <AlertOctagon className="w-4 h-4 text-red-600" />
+            <span>Fish Poisoning Advisory Zones</span>
+            <span
+              className={`ml-1 text-[11px] px-2 py-0.5 rounded-full font-bold ${
+                advisoryZones.filter((z) => z.status === 'published').length > 0
+                  ? 'bg-red-100 text-red-800 border border-red-200'
+                  : 'bg-slate-100 text-slate-600'
+              }`}
+            >
+              {advisoryZones.filter((z) => z.status === 'published').length} Active Warnings
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('species')}
+            className={`pb-3 text-xs sm:text-sm font-bold flex items-center gap-2 border-b-2 transition ${
+              activeTab === 'species'
+                ? 'border-indigo-600 text-indigo-600'
+                : 'border-transparent text-slate-500 hover:text-slate-700'
+            }`}
+          >
+            <BookOpen className="w-4 h-4 text-indigo-600" />
+            <span>Stored Fish & AI Species Catalog</span>
+            <span className="ml-1 text-[11px] px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200 font-bold">
+              {speciesList.length} Species
+            </span>
+          </button>
         </div>
+
+        {/* Tab 1: Recorded Catches & AI Verification */}
+        {activeTab === 'catches' && (
+          <div className="space-y-6">
+            {/* 1. Dashboard Statistics Cards */}
+            <StatsCards stats={stats} loading={loadingData} error={apiError} />
+
+            {/* 2. Interactive Leaflet GPS Map & Trip Routes */}
+            <div id="fisheries-map-section">
+              <FisheriesMap
+                catches={catches}
+                selectedCatch={selectedCatch}
+                canViewPreciseGps={canViewPreciseGps}
+                advisoryZones={advisoryZones}
+              />
+            </div>
+
+            {/* 3. Filter Toolbar */}
+            <FilterBar
+              filters={filters}
+              onFilterChange={setFilters}
+              speciesList={speciesList}
+              totalMatches={catches.length}
+              loading={loadingData}
+            />
+
+            {/* 4. Catch Lists & Human AI Verification Table */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-bold text-slate-800 uppercase tracking-wider">
+                  Recorded Catches & AI Species Suggestions
+                </h3>
+                <span className="text-xs text-slate-500">
+                  Showing {catches.length} {catches.length === 1 ? 'catch' : 'catches'}
+                </span>
+              </div>
+
+              <CatchTable
+                catches={catches}
+                loading={loadingData}
+                onVerify={handleOpenReview}
+                onSelectOnMap={handleSelectOnMap}
+                selectedCatchId={selectedCatch?.id}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Tab 2: Fish Poisoning Advisory Zones Management & GIS Map */}
+        {activeTab === 'advisories' && (
+          <div className="space-y-6">
+            {/* 1. Leaflet Advisory Polygon Map & Live Coordinate Warning Tester */}
+            <AdvisoryPolygonMap
+              zones={advisoryZones}
+              selectedZone={selectedZone}
+              onSelectZone={setSelectedZone}
+              isDrawingMode={isDrawingMode}
+              setIsDrawingMode={setIsDrawingMode}
+              drawnPolygon={drawnPolygon}
+              setDrawnPolygon={setDrawnPolygon}
+            />
+
+            {/* 2. Advisory Zones Management, Verification Workflow & Audit Trail */}
+            <AdvisoryManager
+              zones={advisoryZones}
+              speciesList={speciesList}
+              currentUser={user}
+              onRefresh={loadDashboardData}
+              onSelectZone={setSelectedZone}
+              selectedZone={selectedZone}
+              drawnPolygon={drawnPolygon}
+              setIsDrawingMode={setIsDrawingMode}
+            />
+          </div>
+        )}
+
+        {/* Tab 3: Stored Fish & AI Species Catalog */}
+        {activeTab === 'species' && (
+          <SpeciesCatalog
+            speciesList={speciesList}
+            loading={loadingData}
+            onRefresh={loadDashboardData}
+            onIdentifySpecies={(spec) => {
+              setAiModalSpecies(spec || null);
+              setIsAiModalOpen(true);
+            }}
+            onViewCatches={(speciesId) => {
+              setFilters((prev) => ({ ...prev, species_id: String(speciesId), status: 'all' }));
+              setActiveTab('catches');
+            }}
+          />
+        )}
       </main>
 
       {/* 5. Human Species Verification / Correction Modal */}
@@ -281,6 +474,18 @@ export default function DashboardPage() {
         isOpen={isModalOpen}
         onClose={handleCloseReview}
         onSubmit={handleSubmitVerification}
+      />
+
+      {/* 6. Admin AI Fish Identification & Specimen Training Modal */}
+      <AiFishIdentifierModal
+        isOpen={isAiModalOpen}
+        onClose={() => {
+          setIsAiModalOpen(false);
+          setAiModalSpecies(null);
+        }}
+        onSuccess={loadDashboardData}
+        speciesList={speciesList}
+        initialSpecies={aiModalSpecies}
       />
     </div>
   );

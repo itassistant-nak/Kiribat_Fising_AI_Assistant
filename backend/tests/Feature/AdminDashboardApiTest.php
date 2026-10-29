@@ -332,4 +332,115 @@ class AdminDashboardApiTest extends TestCase
                 ]
             ]);
     }
+
+    /**
+     * Test admin changing catch image automatically marks record as 'not_a_catch' (only catches from fishermen are genuine catches).
+     */
+    public function test_admin_can_correct_catch_image_and_verify_with_ai_suggestion(): void
+    {
+        $adminToken = $this->admin->createToken('test')->plainTextToken;
+
+        $newPhotoUrl = 'https://example.com/corrected_kuau_specimen.jpg';
+
+        $response = $this->withHeader('Authorization', "Bearer {$adminToken}")
+            ->postJson("/api/admin/catches/{$this->catch->id}/verify", [
+                'action' => 'correct',
+                'species_id' => $this->speciesKuau->id,
+                'photo_url' => $newPhotoUrl,
+                'ai_species_suggestion' => 'Te Kuau (Camouflage Grouper)',
+                'ai_confidence' => 0.96,
+                'verification_notes' => 'Replaced blurry photo with verified specimen image. Re-analyzed by AI and confirmed by officer.',
+            ]);
+
+        $response->assertStatus(200)
+            ->assertJsonPath('photo_updated', true)
+            ->assertJsonPath('catch.photo_url', $newPhotoUrl)
+            ->assertJsonPath('catch.species_id', $this->speciesKuau->id)
+            ->assertJsonPath('catch.is_catch', false)
+            ->assertJsonPath('catch.verification_status', 'not_a_catch');
+
+        $this->assertDatabaseHas('catch_records', [
+            'id' => $this->catch->id,
+            'photo_url' => $newPhotoUrl,
+            'species_id' => $this->speciesKuau->id,
+            'is_catch' => false,
+            'verification_status' => 'not_a_catch',
+            'ai_species_suggestion' => 'Te Atun (Skipjack Tuna)', // Original submission preserved
+        ]);
+
+        $updatedCatch = CatchRecord::find($this->catch->id);
+        $this->assertIsArray($updatedCatch->ai_metadata);
+        $this->assertEquals('https://example.com/fish.jpg', $updatedCatch->ai_metadata['original_photo_url']);
+        $this->assertEquals('Te Kuau (Camouflage Grouper)', $updatedCatch->ai_metadata['corrected_ai_suggestion']);
+        $this->assertTrue($updatedCatch->ai_metadata['not_a_catch']);
+    }
+
+    /**
+     * Test admin can upload new photo file during catch verification, marking as not_a_catch.
+     */
+    public function test_admin_can_upload_new_catch_image_file_and_approve(): void
+    {
+        \Illuminate\Support\Facades\Storage::fake('public');
+
+        $adminToken = $this->admin->createToken('test')->plainTextToken;
+        $file = \Illuminate\Http\UploadedFile::fake()->create('clear_specimen.jpg', 100, 'image/jpeg');
+
+        $response = $this->withHeader('Authorization', "Bearer {$adminToken}")
+            ->post("/api/admin/catches/{$this->catch->id}/verify", [
+                'action' => 'approve',
+                'photo' => $file,
+                'species_id' => $this->speciesAtun->id,
+                'verification_notes' => 'Uploaded clear photo to replace original.',
+            ], [
+                'Accept' => 'application/json',
+            ]);
+
+        $response->assertStatus(200)
+            ->assertJsonPath('photo_updated', true)
+            ->assertJsonPath('catch.is_catch', false)
+            ->assertJsonPath('catch.verification_status', 'not_a_catch');
+
+        $updatedCatch = CatchRecord::find($this->catch->id);
+        $this->assertStringContainsString('catch_corrected_', $updatedCatch->photo_url);
+        $this->assertFalse((bool)$updatedCatch->is_catch);
+    }
+
+    /**
+     * Test admin can directly mark an invalid catch as 'not_a_catch' and verify exclusion from stats.
+     */
+    public function test_admin_can_mark_submission_as_not_a_catch_and_exclude_from_stats(): void
+    {
+        $adminToken = $this->admin->createToken('test')->plainTextToken;
+
+        // 1. Mark catch as not a catch
+        $response = $this->withHeader('Authorization', "Bearer {$adminToken}")
+            ->postJson("/api/admin/catches/{$this->catch->id}/verify", [
+                'action' => 'not_a_catch',
+                'verification_notes' => 'Photograph is debris/seaweed, not an artisanal fish catch.',
+            ]);
+
+        $response->assertStatus(200)
+            ->assertJsonPath('catch.is_catch', false)
+            ->assertJsonPath('catch.verification_status', 'not_a_catch');
+
+        // 2. Fetch stats and verify this record is excluded from official catch counts
+        $statsRes = $this->withHeader('Authorization', "Bearer {$adminToken}")
+            ->getJson('/api/admin/stats');
+
+        $statsRes->assertStatus(200)
+            ->assertJsonPath('overview.total_catches', 0)
+            ->assertJsonPath('overview.total_weight_kg', 0)
+            ->assertJsonPath('overview.total_quantity', 0)
+            ->assertJsonPath('overview.not_a_catch_count', 1);
+
+        // 3. Filter by not_a_catch returns the record
+        $filterRes = $this->withHeader('Authorization', "Bearer {$adminToken}")
+            ->getJson('/api/catches?status=not_a_catch');
+
+        $filterRes->assertStatus(200)
+            ->assertJsonPath('count', 1)
+            ->assertJsonPath('data.0.id', $this->catch->id)
+            ->assertJsonPath('data.0.is_catch', false);
+    }
 }
+
