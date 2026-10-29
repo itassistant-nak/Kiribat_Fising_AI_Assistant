@@ -93,10 +93,8 @@ unless marked otherwise.
 
 ## 6. Known limitations
 
-1. **Catch uploads are not idempotent** — a sync retry duplicates rows
-   (proven: 2 identical rows). Trips already upsert on `(trip_id, sequence)`.
-2. **Missing GPS silently defaults** — `CatchController::store` falls back to
-   `1.3650,172.9450` instead of null, fabricating a location.
+1. ~~Catch uploads are not idempotent~~ — FIXED P0-10 (client_uuid unique, 200 replay; live step 12 PASS).
+2. ~~Missing GPS silently defaults~~ — FIXED P0-10 (null stored, range 422). One seeded demo catch legitimately uses 1.3650,172.9450 in seed data (audited).
 3. **Mobile API URL is hardcoded** (`http://127.0.0.1:8000`) — device/emulator
    demos need a settings override or `--dart-define` plumbing.
 4. **`next.config.ts` rewrite hardcodes 127.0.0.1:8000** — split-host deploys
@@ -136,11 +134,9 @@ None for a local-demo submission. The following bound what can be *claimed*:
 ## 10. Day 5 actions (in priority order)
 
 1. **Commit Day 2–4** (user): review `git status`, commit in slices; push.
-2. **Catch idempotency**: add `client_uuid` unique column + `updateOrCreate`;
-   mobile sends its local UUID (mirrors the trip pattern). Re-run §3 step 12.
-3. **GPS defaults → null** in `CatchController::store`; audit rows already
-   carrying `1.3650,172.9450`.
-4. **MySQL staging run**: `migrate:fresh --seed` + full suite against MySQL 8.
+2. **Catch idempotency**: DONE P0-10 (client_uuid unique + replay; step 12 PASS live).
+3. **GPS defaults → null**: DONE P0-10 (audited: 1 seeded demo row, by seed design).
+4. **MySQL staging run**: DONE Day 6 against temp MySQL 8.0.46 (migrate:fresh --seed 5/42/2/8/3; FK-safe seeder fix). Production staging host still to be named by user.
 5. **Meta**: provision key + billing approval; pick vision-capable model (or
    keep KB + text notes and say so); first live probe.
 6. **Android**: install Temurin 17 on demo machine; `flutter build apk

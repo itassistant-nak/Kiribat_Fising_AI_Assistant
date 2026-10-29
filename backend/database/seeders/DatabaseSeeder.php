@@ -423,8 +423,10 @@ class DatabaseSeeder extends Seeder
         ]);
 
         // 5. Fish Poisoning Advisory Zones (Synthetic Demonstrations for Training & Safety)
-        AdvisoryZone::truncate();
-        AdvisoryAuditLog::truncate();
+        // FK-safe reseed: TRUNCATE fails on MySQL (1701) while zones are
+        // referenced by advisory_zone_species; DELETE cascades instead.
+        AdvisoryAuditLog::query()->delete();
+        AdvisoryZone::query()->delete();
 
         // Zone 1: Published Authority-Confirmed Advisory (Betio Passage & Western Reef Flat)
         $zone1 = AdvisoryZone::create([

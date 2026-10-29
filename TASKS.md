@@ -21,7 +21,7 @@ Only mark `DONE` when acceptance criteria are tested. Each agent claims one task
 | P1-05 | P1 | GPS trip routes | DONE | P1-05-TripRoutes-Agent (Muse Code) | master | Offline route survives restart and syncs (46 PHPUnit, 27 Flutter, 8/8 live acceptance pass) |
 | P0-08 | P0 | End-to-end demo + submission | DONE | Day4-Integration-Agent (Muse Code) | master | 18-step workflow tested (17 PASS/1 FAIL/2 BLOCKED documented), checklist + docs + video script ready |
 | P0-09 | P0 | Muse Wonder 1.0 fisheries assistant integration (deepen + test) | IN_PROGRESS | MuseWonder-Agent (Claude Sonnet 4.6 Thinking) 2026-10-28T15:53 +12:00 | master | Verify image modality, implement queryFisheriesAssistant(), combine SAM+KB+Muse, no invented species, all Meta calls mocked in tests |
-| P0-10 | P0 | Day 5 catch idempotency, GPS-null and sync-retry hardening | IN_PROGRESS | Muse Code (muse-wonder-1.0) 2026-10-29 UTC | master | Same client_uuid retry returns one row (200 replay), missing GPS stored null, failed catches retried without re-billing AI, mobile sends client_uuid and parses identification+segmentation; backend + Dart tests pass |
+| P0-10 | P0 | Day 5 catch idempotency, GPS-null and sync-retry hardening | DONE | Muse Code (muse-wonder-1.0) 2026-10-29 UTC | master | client_uuid unique + 200 replay (live step 12 now PASS), GPS null/range-checked, failed catches retried with AI persisted pre-upload (identify billed once), mobile parses identification+segmentation with SAM/verification display; 70 PHPUnit + 43 Flutter pass; MySQL 8 live migrate:fresh --seed 5/42/2/8/3 after FK-safe seeder fix |
 | P1-06 | P1 | Day 4 reference-database hardening (35-entry import) | DONE | Muse Code (muse-wonder-1.0) 2026-10-29T00:40 UTC | master | 42 catalog (9 verified species + 12 needs_review species + 9 taxonomic_group + 12 non_fish_organism); verbatim scientific_name_as_provided incl. misspellings; GET /api/species?verification_status/record_type filters; identify-fish reference_candidates labelled, no fabricated confidence, SAM separate; 65 PHPUnit pass (981 assertions), migrate:fresh --seed reproduces 42/5 users |
 
 
@@ -44,6 +44,28 @@ Only mark `DONE` when acceptance criteria are tested. Each agent claims one task
   3. SAM separate, Muse text-only: identify returns segmentation + reference_candidates (source=reference_database), SAM never names species; meta-health reports muse text-only + sam image model without a billable probe; tests Http::fake + Http::assertNothingSent, key forced null.
   4. Human confirmation: every candidate requires_human_confirmation=true; disclaimer states photographs cannot detect toxins.
   5. Tested: php artisan test — 65 passed (981 assertions, 0 failures) incl. 9 new ReferenceDatabaseTest; php -l clean on all changed files.
+- Status: DONE
+
+
+---
+- Task ID: P0-10 (Day 5 catch idempotency, GPS-null and sync-retry hardening + Day 6 QA)
+- Agent/model and session: Muse Code (muse-wonder-1.0) 2026-10-29 UTC
+- Branch/worktree: master
+- Files changed:
+  - `backend/database/migrations/2026_10_29_000002_add_client_uuid_to_catch_records_table.php` (new: nullable unique client_uuid)
+  - `backend/app/Models/CatchRecord.php` (fillable), `backend/app/Http/Controllers/CatchController.php` (replay-before-upload 200/409, GPS null + range 422, captured_at + species_name_raw preserved)
+  - `backend/database/seeders/DatabaseSeeder.php` (FK-safe advisory reseed: DELETE not TRUNCATE — fixes MySQL 1701)
+  - `backend/tests/Feature/CatchIdempotencyTest.php` (new, 5 tests)
+  - `mobile/lib/services/sync/api_client.dart` (sends client_uuid), `mobile/lib/services/sync/sync_service.dart` (identification parsing, pending+failed retry, AI persisted before upload), `mobile/lib/ui/screens/log_catch_screen.dart` (SAM evidence + verified/needs-review display)
+  - `mobile/test/ai_catch_offline_test.dart` (real Laravel response shape in mock, segmentation assert, retry/no-rebill test), `mobile/test/catch_photo_upload_test.dart` (client_uuid field assert)
+  - `SUBMISSION_CHECKLIST.md`, `TASKS.md`, `PROJECT_STATE.md`, `DECISIONS.md` (ADR-019)
+- Acceptance criteria / Evidence:
+  1. Duplicate prevention: same client_uuid POST twice -> 201 then 200 idempotent_replay same id, 1 row (PHPUnit + live workflow 12/12 incl. step 12); cross-fisher UUID -> 409; no-UUID creates unchanged.
+  2. GPS: missing stays null (live + DB assert), provided preserved, out-of-range 422; 1 seeded demo catch still sits at 1.3650,172.9450 by seed design (audited, not store-fabricated).
+  3. No duplicate AI billing: Dart test 5 — failed upload persists online_identified, retry syncs with identifyCount still 1, uploadCount 2. Mobile now reads Laravel `identification` (was stale `primary_identification`, so real online AI previously applied nowhere).
+  4. Suites: php artisan test 70 passed (1005 assertions); flutter test 43 passed (analyzer clean on touched files); frontend npm run build clean; live workflow (/tmp/day6_workflow.js vs :8092) 12 PASS 0 FAIL.
+  5. Day 6: secrets scan clean (.env ignored, 0 key refs in frontend/mobile); MySQL 8.0.46 live migrate:fresh --seed -> 5 users/42 species/2 trips/8 catches/3 zones (temp instance shut down); advisory publication RBAC covered by existing tests.
+- Remaining blockers (external, unchanged): commit/push (user decision), Meta live probe (key+billing approval), Android APK + real-device test (no JDK), demo video (demo machine), official deadline/submission (user).
 - Status: DONE
 
 ## Claim and handoff template

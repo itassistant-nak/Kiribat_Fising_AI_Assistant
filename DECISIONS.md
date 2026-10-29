@@ -251,6 +251,16 @@
   4. POST /api/ai/identify-fish retrieves reference_candidates from the database (verified first, max 5, source=reference_database, requires_human_confirmation=true, no fabricated confidence), labels the primary with verification_status/record_type/is_verified_record, keeps SAM 3.1 segmentation as separate evidence, and keeps Muse Wonder advisory text-only. meta-health reports image modality (muse text-only, sam-3.1 image) without making a billable probe call.
 - Consequences: Officers and clients can tell verified taxonomy from unreviewed imports at a glance; non-fish and group entries are first-class without pretending to be species; human review remains mandatory and toxicity is never inferred from a photograph.
 
+## ADR-019 — Catch Idempotency, GPS Honesty, and Sync Retry Without Re-Billing (accepted)
+- Status: Accepted (Day 5/6, P0-10).
+- Context: Day 4 step 12 proved catch uploads duplicate on retry (trips were already idempotent), CatchController fabricated GPS 1.3650,172.9450 when missing, Flutter stranded `failed` catches forever, retried AI identification (billable), and read a stale `primary_identification` key so real Laravel `identification` responses (incl. SAM evidence) never reached the fisher UI. MySQL seeding also failed (1701) on TRUNCATE of FK-referenced advisory zones.
+- Decision:
+  1. `catch_records.client_uuid` (nullable, unique) carries the mobile local UUID; store replays same-owner retries as 200 `idempotent_replay` before file handling, returns 409 for another fisher's UUID, and converges on the unique-index winner under races. No-UUID web/admin creates are unchanged.
+  2. Missing latitude/longitude store as null; coordinates range-validated (422). Offline `captured_at` and `species_name_raw` are preserved.
+  3. Flutter sends `client_uuid`, retries pending+failed catches, persists the AI result before uploading (retry never re-calls identify), and parses `identification` with nested SAM `segmentation` + verification labels displayed as evidence only.
+  4. Seeder reseeds advisories with FK-safe DELETE (cascade) instead of TRUNCATE, restoring MySQL 8 `migrate:fresh --seed`.
+- Consequences: Offline retries are safe and cheap; locations are never invented; SAM stays segmentation-only; demo seeds reproduce identically on SQLite and MySQL 8.
+
 ## ADR template
 - ID/date:
 - Status: Proposed / Accepted / Superseded
