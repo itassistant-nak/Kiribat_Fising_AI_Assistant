@@ -1,5 +1,5 @@
 # Project State
-Updated: 2026-10-29 (P1-06 Day 4 reference-database hardening complete: 42-row catalog with structured verification/record types, 65 PHPUnit pass)
+Updated: 2026-10-29 (P0-10 Day 5/6 complete: catch idempotency live-verified, MySQL 8 seed reproduced, 70 PHPUnit + 43 Flutter pass)
 
 ## Goal
 Deliver an offline-first Kiribati AI Fisheries Assistant hackathon prototype with real Meta-model fish identification, offline catches and GPS, synchronization, administrator review, and species-specific advisory alerts.
@@ -8,7 +8,7 @@ Deliver an offline-first Kiribati AI Fisheries Assistant hackathon prototype wit
 - Workspace: `~/Projects/kiribati-ai-fisheries`
 - Stack planned: Laravel/SQLite API, Next.js admin dashboard, Flutter/SQLite mobile.
 - Tools verified: Node.js v24.11.1, npm 11.6.2, PHP 8.4.26, Composer 2.10.2, SQLite 3.
-- Git repository: Initialized; working branch is `master` (Day-1 TASKS.md rows say `main`, but all commits are on `master`).
+- Git repository: Linked to GitHub remote `origin` (`git@github.com:itassistant-nak/Kiribat_Fising_AI_Assistant.git`); default branch `main`; all Days 1–4 commits published up to date (`d9dcdeb`).
 
 ## Verified working features
 - **Laravel API Backend (`backend/`):**
@@ -97,6 +97,10 @@ Deliver an offline-first Kiribati AI Fisheries Assistant hackathon prototype wit
   - 35-entry import classified per source ID (12 needs_review species + 9 groups + 12 non-fish among imports); curated 9 explicitly verified and untouched; seeder idempotent with backfill only for its own prior imports.
   - `GET /api/species` filters by verification/record_type with `is_verified_record`/`requires_human_review`; identify-fish returns DB `reference_candidates` (verified-first, no fabricated confidence) labelled by verification, SAM evidence separate, Muse advisory text-only; meta-health reports image modality without probing (no billable call).
   - Verified: `migrate:fresh --seed` → 42 species (9/12/9/12 split), 5 users; `php artisan test` 65 passed (981 assertions).
+- **Day 5/6 Catch Idempotency, GPS Honesty & QA — P0-10 (`backend/` & `mobile/`):**
+  - `client_uuid` nullable-unique on catches; same-owner retry → 200 `idempotent_replay` (live step 12 PASS, was FAIL), cross-fisher → 409; missing GPS → null + range 422; offline `captured_at` preserved.
+  - Flutter sends `client_uuid`, retries pending+failed, persists AI result pre-upload (identify billed once per catch), parses real `identification` shape and displays SAM segmentation + verified/needs-review labels (evidence only).
+  - Day 6 QA: secrets scan clean; MySQL 8.0.46 live `migrate:fresh --seed` → 5/42/2/8/3 after FK-safe seeder fix (ADR-019); live workflow `/tmp/day6_workflow.js` 12 PASS 0 FAIL.
 - **Day 4 Integration & Submission Readiness (P0-08):**
   - 18-step fisherman workflow executed live: 17 PASS (auth, trip, GPS, advisory warning, AI suggestion, sync, approve/correct, stats feed, 401/403/422 paths); step 12 FAIL with evidence (catch retry duplicates — trips idempotent); steps 13–14 BLOCKED (no Meta key, text-only model).
   - Secrets audited: `.env` ignored, examples placeholder-only, key backend-only, CORS preflight 204 verified live; zero Meta spend.
@@ -119,6 +123,7 @@ P1-06 Day 4 reference-database hardening complete (65 PHPUnit, 981 assertions; c
 - No blockers for a local-demo submission. Bounded claims: live Meta vision (no key/model), Android APK (no JDK), MySQL live run (sandbox veto) — all documented in `SUBMISSION_CHECKLIST.md` with Day 5 paths. Only Day 1 is committed (user decision pending).
 
 ## Last test run
+- P0-10 (2026-10-29): `php artisan test` 70 passed (1005 assertions); `flutter test` 43 passed; `npm run build` clean; live workflow 12/12; MySQL 8 seed 5/42/2/8/3.
 - `cd backend && php artisan test` — 65 passed (981 assertions, 0 failures) incl. 9 new ReferenceDatabaseTest (P1-06), verified 2026-10-29; `migrate:fresh --seed` → 42 species (9 verified species, 12 needs_review species, 9 taxonomic_group, 12 non_fish_organism), 5 users.
 - `flutter test` (mobile) — 42 passed (0 failures) incl. photo capture/upload/quality tests, verified 2026-10-28 (writable SDK copy, proxy bypassed for loopback); analyzer clean; `flutter build web` compiles; live multipart photo upload 201 + `photo_url` verified.
 - `node scripts/verify_day3_acceptance.js` — All 9 Day 3 acceptance tests passed (Day 3 session; not re-run, needs live servers).
@@ -162,3 +167,5 @@ P1-06 Day 4 reference-database hardening complete (65 PHPUnit, 981 assertions; c
 | 2026-10-28 | Photo-Quality-Agent (Muse Code) | On-device blur detection (user-directed): calibrated Laplacian scorer (threshold 100.0), blurry snackbar + retake banner, quality persisted in SQLite; 5 tests. Server mirror deferred (host has no image decoder) | 42 Flutter pass; analyzer clean; web build compiles | Server-side quality when php-gd/ffmpeg lands; Day 5 list |
 | 2026-10-29 12:35 (+12:00) | Server-Bringup-Agent | Updated `scripts/start.sh` to prefer prebuilt Flutter web bundle via `serve_flutter.py` on port 8080. Started full Kiribati server stack in background daemon mode. All three services verified healthy live with HTTP 200 OK: Backend (8000), Next.js Admin (3000), and Flutter Web (8080). | Backend `/api/health` 200 OK, Frontend `/` 200 OK, Flutter `/` 200 OK; `bash scripts/status.sh` reports all services UP | Ready for user interaction and browser inspection |
 | 2026-10-29 | P1-06-ReferenceDB-Agent (Muse Code) | Day 4 reference-database hardening: structured verification_status/record_type/scientific_name_as_provided, classified 35-entry seeder, species filters, DB reference_candidates in identify-fish, meta-health image-modality report (no probe), 9 new tests | 65 PHPUnit passed (981 assertions); migrate:fresh --seed 42 species (9/12/9/12), 5 users; php -l clean | Day 5 per SUBMISSION_CHECKLIST §10 (commit, catch idempotency, GPS defaults) |
+| 2026-10-29 14:21 (+12:00) | Repository-Sync-Agent | Committed Days 2–4 backlog (`d9dcdeb`), renamed active branch to `main`, linked remote `git@github.com:itassistant-nak/Kiribat_Fising_AI_Assistant.git`, and pushed full codebase and history to GitHub. | `git status` clean, branch up to date with `origin/main` | Next steps per SUBMISSION_CHECKLIST §10 |
+| 2026-10-29 | P0-10-Day5/6-Agent (Muse Code) | Catch idempotency + GPS-null + Flutter retry/no-rebill + real identify parsing/SAM display; Day 6 QA incl. MySQL live seed fix | 70 PHPUnit, 43 Flutter, Next build clean, live 12/12, MySQL 5/42/2/8/3 | Commit (user), Meta probe (key approval), APK/device/video/submission (external) |
