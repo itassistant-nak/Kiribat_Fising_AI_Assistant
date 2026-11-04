@@ -28,12 +28,14 @@ Route::get('/health', function () {
     }
 
     return response()->json([
-        'status'   => 'ok',
-        'service'  => 'Kiribati Fisheries Assistant API',
-        'time'     => now()->toIso8601String(),
-        'database' => $db,
-        'tables'   => $tables,
+        'status'      => 'ok',
+        'service'     => 'Kiribati Fisheries Assistant API',
+        'time'        => now()->toIso8601String(),
+        'database'    => $db,
+        'tables'      => $tables,
         'app_key_set' => $appKey,
+        'user_count'  => $db === 'connected' ? \App\Models\User::count() : null,
+        'admin_exists'=> $db === 'connected' ? \App\Models\User::where('email','admin@fisheries.gov.ki')->exists() : false,
     ]);
 });
 
