@@ -178,59 +178,14 @@ class FishIdentificationComparisonService
     }
 
     /**
-     * Normalize Meta Muse Glimmer / Meta SAM 3.1 response.
+     * Normalize Meta Muse vision response.
+     * SAM evidence stays separate (segmentation only, never species or confidence).
      */
     public function normalizeMuseResponse(?array $raw, ?string $exceptionError = null, int $durationMs = 0, array $samEvidence = []): array
     {
         $model = $this->metaAiService->getVisionModel();
         $rawStatus = $raw['status'] ?? '';
         $rawError = $raw['error'] ?? null;
-
-        // When vision model was not completed with a species identification,
-        // and Meta SAM 3.1 segmentation succeeded, use SAM 3.1 evidence as the Meta provider result
-        if (($rawStatus !== 'completed' || empty($raw['identification']))
-            && !empty($samEvidence['status'])
-            && $samEvidence['status'] === 'ok'
-        ) {
-            $isFishDetected = !empty($samEvidence['fish_detected']);
-            $count = (int) ($samEvidence['object_count'] ?? ($isFishDetected ? 1 : 0));
-            $bestBox = $samEvidence['best_box'] ?? null;
-            $boxDesc = $bestBox ? "Bounding box: [x1: {$bestBox['x1']}, y1: {$bestBox['y1']}, x2: {$bestBox['x2']}, y2: {$bestBox['y2']}]" : 'Visual contour confirmed';
-            $traits = $isFishDetected
-                ? array_values(array_filter([
-                    "Meta SAM 3.1 segmented {$count} fish object(s)",
-                    $boxDesc,
-                    ($bestBox && !empty($bestBox['has_mask'])) ? 'Mask contour detected' : 'Bounding box verified',
-                ]))
-                : ['Meta SAM 3.1 segmented 0 fish objects'];
-
-            return [
-                'provider_name'       => 'muse_glimmer',
-                'model_identifier'    => 'sam-3.1',
-                'status'              => 'success',
-                'model'               => 'Meta SAM 3.1',
-                'is_external_request' => true,
-                'suggested_species'   => [
-                    'scientific_name' => $isFishDetected ? 'Actinopterygii (Fish specimen segmented)' : 'None',
-                    'common_name'     => $isFishDetected ? 'Fish Detected (SAM 3.1)' : 'No Fish Detected',
-                    'kiribati_name'   => $isFishDetected ? 'Fish Isolated (SAM 3.1)' : 'Akea te Ika',
-                    'ciguatera_risk'  => 'unknown',
-                ],
-                'scientific_name'     => $isFishDetected ? 'Actinopterygii' : 'None',
-                'confidence'          => 0.94,
-                'visible_features'    => $traits,
-                'reasoning'           => $isFishDetected
-                    ? "Meta SAM 3.1 image segmentation successfully confirmed fish presence with {$count} object(s) isolated ({$boxDesc})."
-                    : "Meta SAM 3.1 image segmentation analyzed the photo and detected no fish objects.",
-                'alternatives'        => [],
-                'duration_ms'         => $samEvidence['latency_ms'] ?? $durationMs,
-                'catalogue_match'     => false,
-                'species_id'          => null,
-                'raw_response'        => $samEvidence['raw_output'] ?? null,
-                'error'               => null,
-                'sam_evidence'        => $samEvidence,
-            ];
-        }
 
         if ($exceptionError !== null) {
             $isTimeout = str_contains(strtolower($exceptionError), 'timeout')
@@ -422,46 +377,9 @@ class FishIdentificationComparisonService
         }
 
         if ($rawStatus !== 'completed' || empty($raw['identification'])) {
-            // When Meta SAM 3.1 segmentation succeeded, use SAM 3.1 evidence for the Meta provider
-            if (!empty($samEvidence['status']) && $samEvidence['status'] === 'ok' && !empty($samEvidence['fish_detected'])) {
-                $count = (int) ($samEvidence['object_count'] ?? 1);
-                $bestBox = $samEvidence['best_box'] ?? null;
-                $boxDesc = $bestBox ? "Bounding box: [x1: {$bestBox['x1']}, y1: {$bestBox['y1']}, x2: {$bestBox['x2']}, y2: {$bestBox['y2']}]" : 'Visual contour confirmed';
-                $traits = array_values(array_filter([
-                    "Meta SAM 3.1 segmented {$count} fish object(s)",
-                    $boxDesc,
-                    ($bestBox && !empty($bestBox['has_mask'])) ? 'Mask contour detected' : 'Bounding box verified',
-                ]));
-
-                return [
-                    'provider_name'       => 'muse_glimmer',
-                    'model_identifier'    => 'sam-3.1',
-                    'status'              => 'success',
-                    'model'               => 'Meta SAM 3.1',
-                    'is_external_request' => true,
-                    'suggested_species'   => [
-                        'scientific_name' => 'Actinopterygii (Fish specimen segmented)',
-                        'common_name'     => 'Fish Detected (SAM 3.1)',
-                        'kiribati_name'   => 'Fish Isolated (SAM 3.1)',
-                        'ciguatera_risk'  => 'unknown',
-                    ],
-                    'scientific_name'     => 'Actinopterygii',
-                    'confidence'          => 0.94,
-                    'visible_features'    => $traits,
-                    'reasoning'           => "Meta SAM 3.1 image segmentation successfully confirmed fish presence with {$count} object(s) isolated ({$boxDesc}).",
-                    'alternatives'        => [],
-                    'duration_ms'         => $samEvidence['latency_ms'] ?? $durationMs,
-                    'catalogue_match'     => false,
-                    'species_id'          => null,
-                    'raw_response'        => $samEvidence['raw_output'] ?? null,
-                    'error'               => null,
-                    'sam_evidence'        => $samEvidence,
-                ];
-            }
-
             $isInvalid = ($rawStatus === 'invalid_response')
                 || (is_string($rawError) && str_contains(strtolower($rawError), 'json'));
-            $status = $isInvalid ? 'invalid_response' : 'failed';
+            $status = $isInvalid ? 'invalid_response' : ($rawStatus ?: 'unavailable');
 
             return [
                 'provider_name'       => 'muse_glimmer',
@@ -479,7 +397,7 @@ class FishIdentificationComparisonService
                 'catalogue_match'     => false,
                 'species_id'          => null,
                 'raw_response'        => $raw['raw_text'] ?? null,
-                'error'               => $rawError ?? 'Meta Muse Glimmer identification failed.',
+                'error'               => $rawError ?? 'Meta vision API call did not return a completed identification. Check MODEL_API_KEY and META_AI_VISION_MODEL configuration.',
             ];
         }
 

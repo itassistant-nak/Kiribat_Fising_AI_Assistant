@@ -412,8 +412,8 @@ export default function AiFishIdentifierModal({
                     Select AI Vision Engine
                   </label>
                   <span className="text-[11px] font-medium text-slate-500">
-                    {selectedAiProvider === 'compare' && '⚖️ Parallel Comparison (SAM 3.1 + OpenAI)'}
-                    {selectedAiProvider === 'muse_glimmer' && '🔬 Meta SAM 3.1 (Segmentation Evidence)'}
+                    {selectedAiProvider === 'compare' && '⚖️ Parallel Comparison (Meta Muse + OpenAI)'}
+                    {selectedAiProvider === 'muse_glimmer' && '🔮 Meta Muse Spark (Vision)'}
                     {selectedAiProvider === 'openai' && '⚡ OpenAI Vision (GPT-4o)'}
                   </span>
                 </div>
@@ -439,8 +439,8 @@ export default function AiFishIdentifierModal({
                         : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
                     }`}
                   >
-                    <span>🔬</span>
-                    <span>Meta SAM 3.1</span>
+                    <span>🔮</span>
+                    <span>Meta Muse</span>
                   </button>
                   <button
                     type="button"
@@ -599,7 +599,7 @@ export default function AiFishIdentifierModal({
                             </span>
                           </div>
                           <p className="text-[11px] mt-0.5 opacity-90">
-                            {comparisonData.status === 'agreement' && 'Both Meta SAM 3.1 and OpenAI Vision verified the fish specimen. Review suggestions below.'}
+                            {comparisonData.status === 'agreement' && 'Both Meta Muse and OpenAI Vision suggest the same species. Review suggestions below.'}
                             {comparisonData.status === 'disagreement' && 'The AI models suggest different species. Review both analyses below and choose the correct suggestion, or enter ground truth manually.'}
                             {comparisonData.status === 'single_provider_result' && 'One model succeeded while the other encountered an issue or timeout.'}
                             {comparisonData.comparison?.warning_message && ` ${comparisonData.comparison.warning_message}`}
@@ -621,7 +621,7 @@ export default function AiFishIdentifierModal({
 
                       {/* Dual Provider Cards Grid */}
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        {/* Meta SAM 3.1 Card */}
+                        {/* Meta Muse Card (SAM segmentation is shown separately) */}
                         {comparisonData.providers.muse_glimmer && (
                           <div className={`p-3 rounded-xl border flex flex-col justify-between transition ${
                             comparisonData.providers.muse_glimmer.status === 'success'
@@ -633,9 +633,7 @@ export default function AiFishIdentifierModal({
                                 <div className="flex items-center gap-1.5">
                                   <span className="text-sm">🔬</span>
                                   <span className="text-xs font-bold text-purple-900">
-                                    {comparisonData.providers.muse_glimmer.model_identifier === 'sam-3.1' || comparisonData.providers.muse_glimmer.model?.includes('SAM')
-                                      ? 'Meta SAM 3.1 (Segmentation)'
-                                      : 'Meta AI'}
+                                    Meta Muse ({comparisonData.providers.muse_glimmer.model_identifier || comparisonData.providers.muse_glimmer.model || 'muse-spark-1.3'})
                                   </span>
                                 </div>
                                 <div className="flex items-center gap-1.5">
@@ -646,8 +644,8 @@ export default function AiFishIdentifierModal({
                                   )}
                                   <span className="text-[11px] font-bold font-mono text-purple-800 bg-purple-100 px-2 py-0.5 rounded-full">
                                     {comparisonData.providers.muse_glimmer.status === 'success'
-                                      ? 'Segmented'
-                                      : 'Unavailable'}
+                                      ? `${((comparisonData.providers.muse_glimmer.confidence || 0) * 100).toFixed(0)}%`
+                                      : (comparisonData.providers.muse_glimmer.status || 'Unavailable')}
                                   </span>
                                 </div>
                               </div>
@@ -657,33 +655,33 @@ export default function AiFishIdentifierModal({
                                   <div>
                                     <div className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
                                       <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-                                      {comparisonData.providers.muse_glimmer.suggested_species?.kiribati_name || 'Fish Specimen Isolated'}
+                                      {comparisonData.providers.muse_glimmer.suggested_species?.kiribati_name || 'Unknown'}
                                     </div>
                                     <div className="text-xs text-slate-600 font-medium">
-                                      {comparisonData.providers.muse_glimmer.suggested_species?.common_name || 'Visual Concept: fish'}
+                                      {comparisonData.providers.muse_glimmer.suggested_species?.common_name || ''}
                                     </div>
                                     <div className="text-[11px] italic text-slate-400 font-serif">
-                                      {comparisonData.providers.muse_glimmer.scientific_name || 'Actinopterygii'}
+                                      {comparisonData.providers.muse_glimmer.scientific_name || ''}
                                     </div>
                                   </div>
 
                                   {comparisonData.providers.muse_glimmer.reasoning && (
                                     <p className="text-[11px] text-purple-950 bg-white/70 p-2 rounded-lg border border-purple-100">
-                                      <span className="font-semibold text-purple-900">SAM Evidence: </span>
+                                      <span className="font-semibold text-purple-900">Reasoning: </span>
                                       {comparisonData.providers.muse_glimmer.reasoning}
                                     </p>
                                   )}
 
                                   {comparisonData.providers.muse_glimmer.visible_features?.length > 0 && (
                                     <div className="text-[10px] text-slate-600">
-                                      <span className="font-semibold text-purple-900">Segmentation traits: </span>
+                                      <span className="font-semibold text-purple-900">Visible traits: </span>
                                       {comparisonData.providers.muse_glimmer.visible_features.slice(0, 3).join(', ')}
                                     </div>
                                   )}
                                 </>
                               ) : (
                                 <div className="text-xs text-slate-500 italic py-2">
-                                  SAM unconfigured or unavailable: {comparisonData.providers.muse_glimmer.error || 'Failed'}
+                                  Meta Muse unavailable: {comparisonData.providers.muse_glimmer.error || comparisonData.providers.muse_glimmer.status || 'Failed'}
                                 </div>
                               )}
                             </div>
@@ -694,7 +692,7 @@ export default function AiFishIdentifierModal({
                                 onClick={() => handleApplyProviderSuggestion(comparisonData.providers.muse_glimmer)}
                                 className="mt-3 w-full py-1.5 px-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-bold transition flex items-center justify-center gap-1 shadow-xs"
                               >
-                                <span>Use SAM Evidence</span>
+                                <span>Use Muse Suggestion</span>
                               </button>
                             )}
                           </div>
@@ -783,7 +781,7 @@ export default function AiFishIdentifierModal({
                       </span>
                       {selectedAiProvider === 'muse_glimmer' ? (
                         <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-700 border border-purple-200">
-                          🔬 Meta SAM 3.1 (Segmentation)
+                          🔮 Meta Muse Spark
                         </span>
                       ) : selectedAiProvider === 'openai' ? (
                         <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-teal-100 text-teal-800 border border-teal-200">
@@ -887,7 +885,7 @@ export default function AiFishIdentifierModal({
 
                     {(aiResult.meta_model?.reasoning || aiResult.meta_model?.glimmer_vision?.reasoning) && (
                       <div className="mt-2 text-[11px] text-purple-800 bg-purple-50 p-2 rounded border border-purple-100">
-                        <span className="font-semibold text-purple-900">Meta SAM 3.1 Reasoning: </span>
+                        <span className="font-semibold text-purple-900">Meta Muse Reasoning: </span>
                         {aiResult.meta_model?.reasoning || aiResult.meta_model?.glimmer_vision?.reasoning}
                       </div>
                     )}
