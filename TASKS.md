@@ -37,7 +37,7 @@ Only mark `DONE` when acceptance criteria are tested. Each agent claims one task
 | P0-21 | P0 | SAM 3.1 Hardening & SSE [DONE] Termination | DONE | Antigravity 2026-11-04 (+12:00) | main | HTTP 429 rate_limited mapping, SSE [DONE] stream termination, 10/10 SamSegmentationTest pass, 120/120 backend tests pass |
 | P0-22 | P0 | Meta Muse Glimmer Schema Correction & OpenAI Quota Hardening | DONE | Antigravity 2026-11-04 (+12:00) | main | Fixed Meta input[0].content schema, base64 dataUrl encoding, OpenAI quota caching and cooldown, explicit status mapping (quota_exceeded/rate_limited/unauthorized/invalid_payload), 128/128 backend tests pass |
 | P0-23 | P0 | DNS Stall Fix: ResolvesApiEndpoints in AiIdentificationController | DONE | Antigravity 2026-11-04 (+12:00) | main | Added ResolvesApiEndpoints trait and getCurlOptions() to resolveImageDataUrl() HTTP external image fetch; eliminates 5–10s getaddrinfo() stall; 128/128 backend tests pass |
-| P0-24 | P0 | Free deployment: Vercel (Next.js) + Railway (Laravel) | CLAIMED | Antigravity 2026-11-04T19:55 (+12:00) | main | railway.json, Procfile, nixpacks.toml, CORS update, next.config.ts BACKEND_URL, vercel.json, git push |
+| P0-24 | P0 | Free deployment: Railway (Laravel backend + Next.js frontend) | DONE | Antigravity 2026-11-04T21:08 (+12:00) | main | Both services live on Railway. railway.json + nixpacks.toml + .nvmrc + CORS + BACKEND_URL env var wired. Commit 4b59e0e. |
 
 ---
 - Task ID: P0-23 (DNS Stall Fix: ResolvesApiEndpoints in AiIdentificationController)
