@@ -554,6 +554,7 @@ export interface AiIdentificationResult {
     model?: string;
     advisory_notes?: string | null;
     status?: string;
+    reasoning?: string | null;
     glimmer_vision?: {
       configured?: boolean;
       model?: string;

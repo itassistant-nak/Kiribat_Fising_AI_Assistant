@@ -552,6 +552,23 @@ export default function CorrectionModal({
                   </div>
                 )}
 
+                {/* Meta SAM 3.1 Segmentation Evidence */}
+                {aiResult.segmentation && (
+                  <div className="text-[11px] bg-purple-50/80 border border-purple-200 rounded-lg p-2 text-purple-900 space-y-1">
+                    <div className="flex items-center justify-between font-semibold">
+                      <span>🔬 Meta SAM 3.1 Segmentation:</span>
+                      <span className="text-[10px] bg-purple-200 px-1.5 py-0.5 rounded">
+                        {aiResult.segmentation.fish_detected ? '✓ Fish Confirmed' : 'No Fish'}
+                      </span>
+                    </div>
+                    {aiResult.segmentation.best_box && (
+                      <div className="text-[10px] font-mono text-purple-800">
+                        Box: [{aiResult.segmentation.best_box.x1}, {aiResult.segmentation.best_box.y1}] → [{aiResult.segmentation.best_box.x2}, {aiResult.segmentation.best_box.y2}]
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 <div className="text-[11px] bg-white/80 border border-blue-100 rounded-lg p-2 text-blue-800 flex items-center gap-1.5 font-medium">
                   <Info className="w-3.5 h-3.5 text-blue-600 flex-shrink-0" />
                   <span>

@@ -557,13 +557,14 @@ class AiIdentificationController extends Controller
                         ? 'High CFP risk reported in coastal reef zones.'
                         : null,
                     'visual_features'             => $primaryProvider['visible_features'] ?? [],
-                    'model'                       => 'Parallel Comparison (' . ($primaryProvider['model'] ?? 'muse-glimmer + openai') . ')',
+                    'model'                       => 'Parallel Comparison (' . ($primaryProvider['model'] ?? 'Meta SAM 3.1 + OpenAI') . ')',
                     'model_version'               => 'comparison-v1',
                     'analyzed_at'                 => now()->toIso8601String(),
                     'candidates'                  => array_slice($candidates, 0, 3),
                     'meta_model'                  => [
-                        'status' => $museProv['status'] ?? 'unconfigured',
-                        'model'  => $museProv['model'] ?? 'muse-glimmer',
+                        'status'    => $museProv['status'] ?? 'unconfigured',
+                        'model'     => $museProv['model_identifier'] ?? ($museProv['model'] ?? 'sam-3.1'),
+                        'reasoning' => $museProv['reasoning'] ?? null,
                     ],
                     'openai_model'                => [
                         'status' => $openAiProv['status'] ?? 'unconfigured',

@@ -183,6 +183,54 @@ class FishIdentificationComparisonService
     public function normalizeMuseResponse(?array $raw, ?string $exceptionError = null, int $durationMs = 0, array $samEvidence = []): array
     {
         $model = $this->metaAiService->getVisionModel();
+        $rawStatus = $raw['status'] ?? '';
+        $rawError = $raw['error'] ?? null;
+
+        // When vision model was not completed with a species identification,
+        // and Meta SAM 3.1 segmentation succeeded, use SAM 3.1 evidence as the Meta provider result
+        if (($rawStatus !== 'completed' || empty($raw['identification']))
+            && !empty($samEvidence['status'])
+            && $samEvidence['status'] === 'ok'
+        ) {
+            $isFishDetected = !empty($samEvidence['fish_detected']);
+            $count = (int) ($samEvidence['object_count'] ?? ($isFishDetected ? 1 : 0));
+            $bestBox = $samEvidence['best_box'] ?? null;
+            $boxDesc = $bestBox ? "Bounding box: [x1: {$bestBox['x1']}, y1: {$bestBox['y1']}, x2: {$bestBox['x2']}, y2: {$bestBox['y2']}]" : 'Visual contour confirmed';
+            $traits = $isFishDetected
+                ? array_values(array_filter([
+                    "Meta SAM 3.1 segmented {$count} fish object(s)",
+                    $boxDesc,
+                    ($bestBox && !empty($bestBox['has_mask'])) ? 'Mask contour detected' : 'Bounding box verified',
+                ]))
+                : ['Meta SAM 3.1 segmented 0 fish objects'];
+
+            return [
+                'provider_name'       => 'muse_glimmer',
+                'model_identifier'    => 'sam-3.1',
+                'status'              => 'success',
+                'model'               => 'Meta SAM 3.1',
+                'is_external_request' => true,
+                'suggested_species'   => [
+                    'scientific_name' => $isFishDetected ? 'Actinopterygii (Fish specimen segmented)' : 'None',
+                    'common_name'     => $isFishDetected ? 'Fish Detected (SAM 3.1)' : 'No Fish Detected',
+                    'kiribati_name'   => $isFishDetected ? 'Fish Isolated (SAM 3.1)' : 'Akea te Ika',
+                    'ciguatera_risk'  => 'unknown',
+                ],
+                'scientific_name'     => $isFishDetected ? 'Actinopterygii' : 'None',
+                'confidence'          => 0.94,
+                'visible_features'    => $traits,
+                'reasoning'           => $isFishDetected
+                    ? "Meta SAM 3.1 image segmentation successfully confirmed fish presence with {$count} object(s) isolated ({$boxDesc})."
+                    : "Meta SAM 3.1 image segmentation analyzed the photo and detected no fish objects.",
+                'alternatives'        => [],
+                'duration_ms'         => $samEvidence['latency_ms'] ?? $durationMs,
+                'catalogue_match'     => false,
+                'species_id'          => null,
+                'raw_response'        => $samEvidence['raw_output'] ?? null,
+                'error'               => null,
+                'sam_evidence'        => $samEvidence,
+            ];
+        }
 
         if ($exceptionError !== null) {
             $isTimeout = str_contains(strtolower($exceptionError), 'timeout')

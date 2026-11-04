@@ -599,7 +599,7 @@ export default function AiFishIdentifierModal({
                             </span>
                           </div>
                           <p className="text-[11px] mt-0.5 opacity-90">
-                            {comparisonData.status === 'agreement' && 'Both Meta Muse Glimmer and OpenAI Vision identified the same species. Review suggestions below.'}
+                            {comparisonData.status === 'agreement' && 'Both Meta SAM 3.1 and OpenAI Vision verified the fish specimen. Review suggestions below.'}
                             {comparisonData.status === 'disagreement' && 'The AI models suggest different species. Review both analyses below and choose the correct suggestion, or enter ground truth manually.'}
                             {comparisonData.status === 'single_provider_result' && 'One model succeeded while the other encountered an issue or timeout.'}
                             {comparisonData.comparison?.warning_message && ` ${comparisonData.comparison.warning_message}`}
@@ -809,13 +809,9 @@ export default function AiFishIdentifierModal({
                           <Sparkles className="w-3 h-3 text-teal-600" />
                           Stage 4: OpenAI Vision ({aiResult.openai_model?.model ?? 'gpt-4o'})
                         </span>
-                      ) : (aiResult.model?.includes('SAM') || aiResult.model?.includes('sam-3.1')) ? (
+                      ) : (aiResult.model?.includes('SAM') || aiResult.model?.includes('sam-3.1') || aiResult.model?.includes('Muse')) ? (
                         <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-700 border border-purple-200">
                           🔬 Meta SAM 3.1
-                        </span>
-                      ) : aiResult.model?.includes('Muse Glimmer') ? (
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-700 border border-purple-200">
-                          ✨ Meta Muse Glimmer Vision
                         </span>
                       ) : (
                         <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 text-slate-600 border border-slate-200">
@@ -889,10 +885,10 @@ export default function AiFishIdentifierModal({
                       </ul>
                     </div>
 
-                    {aiResult.meta_model?.glimmer_vision?.reasoning && (
+                    {(aiResult.meta_model?.reasoning || aiResult.meta_model?.glimmer_vision?.reasoning) && (
                       <div className="mt-2 text-[11px] text-purple-800 bg-purple-50 p-2 rounded border border-purple-100">
-                        <span className="font-semibold text-purple-900">Muse Glimmer Reasoning: </span>
-                        {aiResult.meta_model.glimmer_vision.reasoning}
+                        <span className="font-semibold text-purple-900">Meta SAM 3.1 Reasoning: </span>
+                        {aiResult.meta_model?.reasoning || aiResult.meta_model?.glimmer_vision?.reasoning}
                       </div>
                     )}
 
