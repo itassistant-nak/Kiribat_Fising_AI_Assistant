@@ -13,10 +13,27 @@ use App\Http\Middleware\RequireAdminOrReviewer;
 
 // Public Health Check
 Route::get('/health', function () {
+    $db = 'unknown';
+    $tables = [];
+    $appKey = !empty(config('app.key'));
+
+    try {
+        \DB::connection()->getPdo();
+        $db = 'connected';
+        // List tables that exist
+        $allTables = \DB::select("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name");
+        $tables = array_map(fn($t) => $t->name, $allTables);
+    } catch (\Exception $e) {
+        $db = 'error: ' . $e->getMessage();
+    }
+
     return response()->json([
-        'status' => 'ok',
-        'service' => 'Kiribati Fisheries Assistant API',
-        'time' => now()->toIso8601String(),
+        'status'   => 'ok',
+        'service'  => 'Kiribati Fisheries Assistant API',
+        'time'     => now()->toIso8601String(),
+        'database' => $db,
+        'tables'   => $tables,
+        'app_key_set' => $appKey,
     ]);
 });
 
