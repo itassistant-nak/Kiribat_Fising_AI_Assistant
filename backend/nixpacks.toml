@@ -1,0 +1,33 @@
+[variables]
+# PHP version and extensions required by Laravel 11 + SQLite
+PHP_VERSION = "8.3"
+
+[phases.setup]
+nixPkgs = [
+  "php83",
+  "php83Extensions.pdo",
+  "php83Extensions.pdo_sqlite",
+  "php83Extensions.sqlite3",
+  "php83Extensions.mbstring",
+  "php83Extensions.tokenizer",
+  "php83Extensions.xml",
+  "php83Extensions.ctype",
+  "php83Extensions.json",
+  "php83Extensions.openssl",
+  "php83Extensions.fileinfo",
+  "php83Extensions.curl",
+  "php83Extensions.zip",
+  "composer"
+]
+
+[phases.install]
+cmds = [
+  "composer install --no-dev --optimize-autoloader --no-interaction"
+]
+
+[phases.build]
+cmds = [
+  "mkdir -p database && touch database/database.sqlite",
+  "mkdir -p storage/logs storage/framework/cache storage/framework/sessions storage/framework/views bootstrap/cache",
+  "chmod -R 775 storage bootstrap/cache"
+]
