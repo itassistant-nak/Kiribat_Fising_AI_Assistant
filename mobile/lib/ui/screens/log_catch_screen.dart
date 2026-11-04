@@ -968,7 +968,6 @@ class _LogCatchScreenState extends State<LogCatchScreen> {
       ),
     );
   }
-  }
 
   Widget _buildComparisonDetailsCard(Map<String, dynamic> comparison) {
     final sciMatch = comparison['scientific_name_match'] as bool? ?? false;
