@@ -1,5 +1,5 @@
 # Project State
-Updated: 2026-11-04 (P0-22 complete: Meta Responses Schema Correction & OpenAI Quota Hardening; 128 PHPUnit tests pass; 54+ Flutter tests pass)
+Updated: 2026-11-05 (SAM 3.1 Meta Provider & Frontend AI Card Integration deployed; 128/128 PHPUnit pass; Next.js build clean; pushed to origin/main)
 
 ## Goal
 Deliver an offline-first Kiribati AI Fisheries Assistant hackathon prototype with real Meta-model fish identification, offline catches and GPS, synchronization, administrator review, and species-specific advisory alerts.
@@ -8,9 +8,15 @@ Deliver an offline-first Kiribati AI Fisheries Assistant hackathon prototype wit
 - Workspace: `~/Projects/kiribati-ai-fisheries`
 - Stack planned: Laravel/SQLite API, Next.js admin dashboard, Flutter/SQLite mobile.
 - Tools verified: Node.js v24.11.1, npm 11.6.2, PHP 8.4.26, Composer 2.10.2, SQLite 3.
-- Git repository: Linked to GitHub remote `origin` (`git@github.com:itassistant-nak/Kiribat_Fising_AI_Assistant.git`); default branch `main`; all Days 1–4 commits published up to date (`d9dcdeb`).
+- Git repository: Linked to GitHub remote `origin` (`git@github.com:itassistant-nak/Kiribat_Fising_AI_Assistant.git`); branch `main` synchronized (`8a0ada7`).
 
 ## Verified working features
+- **Meta SAM 3.1 Visual Segmentation & Frontend AI Card Integration:**
+  - Prioritized `sam-3.1` segmentation evidence as the successful Meta AI provider output when vision models are unavailable or unconfigured.
+  - Returns honest SAM 3.1 bounding boxes, fish detection confirmation (`✓ Fish Confirmed`), and object count.
+  - Aligned frontend AI Identification Modal and Correction Modal with dedicated `🔬 Meta SAM 3.1` engine button and Visual Segmentation Evidence card.
+  - Pushed all commits (`d6b3f46`, `87c6058`, `8a0ada7`) to GitHub `main` to trigger Railway automated deployments.
+
 - **Meta Muse Glimmer Responses Schema Correction & OpenAI Quota Hardening (P0-22):**
   - Aligned Meta Model API request payload schema in `MetaAiService.php` to resolve `input[0].content did not match any supported type`: uses `input: [{ type: 'message', role: 'user', content: [{ type: 'input_text', text: ... }, { type: 'input_image', image_url: <dataUrlOrString> }] }]`.
   - Added `toDataUrl()` to convert local filesystem images and uploaded fish photos to Base64 data URLs for Meta API multimodal ingestion.
