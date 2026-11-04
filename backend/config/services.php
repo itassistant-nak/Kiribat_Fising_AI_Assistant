@@ -46,6 +46,8 @@ return [
         'timeout'         => (int) env('META_AI_TIMEOUT', 15),
         // Muse Spark 1.3 — vision-capable model for fish species identification
         'vision_model'    => env('META_AI_VISION_MODEL', 'muse-spark-1.3'),
+        // Set META_AI_VISION_ENABLED=false to skip Meta vision call and use knowledge base instead.
+        'vision_enabled'  => (bool) env('META_AI_VISION_ENABLED', true),
         'vision_timeout'  => (int) env('META_AI_VISION_TIMEOUT', 30),
         // SAM 3.1 image segmentation on the same Meta Model API (OpenAI-compatible)
         'base_url'        => env('META_AI_BASE_URL', 'https://api.meta.ai/v1'),

@@ -495,6 +495,20 @@ PROMPT;
     {
         $targetModel = $options['model'] ?? $this->visionModel;
 
+        // Allow disabling Meta vision entirely via META_AI_VISION_ENABLED=false.
+        // When disabled, skip the API call and return vision_disabled so the
+        // caller falls back to the morphological knowledge base cleanly.
+        if (!config('services.meta_ai.vision_enabled', true)) {
+            return [
+                'status'     => 'vision_disabled',
+                'model'      => $targetModel,
+                'parsed'     => null,
+                'raw_text'   => null,
+                'latency_ms' => 0,
+                'error'      => null,
+            ];
+        }
+
         if (!$this->isConfigured()) {
             return [
                 'status'     => 'unconfigured',
