@@ -18,6 +18,7 @@ class MetaAiService
 {
     use ResolvesApiEndpoints;
     protected string $endpoint;
+    protected string $visionEndpoint;
     protected string $model;
     protected string $visionModel;
     protected ?string $apiKey;
@@ -32,12 +33,13 @@ class MetaAiService
         ?string $visionModel = null,
         ?int $visionTimeout = null
     ) {
-        $this->endpoint = $endpoint ?? config('services.meta_ai.endpoint', 'https://api.meta.ai/v1/responses');
-        $this->model = $model ?? config('services.meta_ai.model', 'muse-wonder-1.0');
-        $this->visionModel = $visionModel ?? config('services.meta_ai.vision_model', 'muse-glimmer');
-        $this->apiKey = $apiKey ?? config('services.meta_ai.api_key');
-        $this->timeout = $timeout ?? (int) config('services.meta_ai.timeout', 15);
-        $this->visionTimeout = $visionTimeout ?? (int) config('services.meta_ai.vision_timeout', 30);
+        $this->endpoint       = $endpoint ?? config('services.meta_ai.endpoint', 'https://api.meta.ai/v1/responses');
+        $this->visionEndpoint = config('services.meta_ai.vision_endpoint', $this->endpoint);
+        $this->model          = $model ?? config('services.meta_ai.model', 'muse-wonder-1.0');
+        $this->visionModel    = $visionModel ?? config('services.meta_ai.vision_model', 'muse-spark-1.3');
+        $this->apiKey         = $apiKey ?? config('services.meta_ai.api_key');
+        $this->timeout        = $timeout ?? (int) config('services.meta_ai.timeout', 15);
+        $this->visionTimeout  = $visionTimeout ?? (int) config('services.meta_ai.vision_timeout', 30);
     }
 
     /**
@@ -519,25 +521,46 @@ PROMPT;
                 ];
             }
 
-            $payload = [
-                'model' => $targetModel,
-                'input' => [
-                    [
-                        'type'    => 'message',
-                        'role'    => 'user',
-                        'content' => [
-                            ['type' => 'input_text',  'text'      => trim($prompt)],
-                            ['type' => 'input_image', 'image_url' => $dataUrl],
+            // Auto-detect payload format from vision endpoint URL.
+            // /responses endpoint uses Meta Responses API format (input[]).
+            // /chat/completions endpoint uses OpenAI-compatible format (messages[]).
+            $usesChatCompletions = str_contains($this->visionEndpoint, 'chat/completions');
+
+            if ($usesChatCompletions) {
+                $payload = [
+                    'model'    => $targetModel,
+                    'messages' => [
+                        [
+                            'role'    => 'user',
+                            'content' => [
+                                ['type' => 'text',      'text'      => trim($prompt)],
+                                ['type' => 'image_url', 'image_url' => ['url' => $dataUrl]],
+                            ],
                         ],
                     ],
-                ],
-            ];
+                    'max_tokens' => 1200,
+                ];
+            } else {
+                $payload = [
+                    'model' => $targetModel,
+                    'input' => [
+                        [
+                            'type'    => 'message',
+                            'role'    => 'user',
+                            'content' => [
+                                ['type' => 'input_text',  'text'      => trim($prompt)],
+                                ['type' => 'input_image', 'image_url' => $dataUrl],
+                            ],
+                        ],
+                    ],
+                ];
+            }
 
-            $response = Http::withOptions($this->getCurlOptions($this->endpoint))
+            $response = Http::withOptions($this->getCurlOptions($this->visionEndpoint))
                 ->timeout($this->visionTimeout)
                 ->withToken($this->apiKey)
                 ->acceptJson()
-                ->post($this->endpoint, $payload);
+                ->post($this->visionEndpoint, $payload);
 
             $latencyMs = (int) round((microtime(true) - $startTime) * 1000);
 
