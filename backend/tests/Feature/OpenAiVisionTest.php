@@ -302,4 +302,54 @@ class OpenAiVisionTest extends TestCase
 
         $service->clearQuotaExceeded();
     }
+
+    public function test_openai_fish_vision_service_maps_invalid_json_to_invalid_response(): void
+    {
+        $service = new \App\Services\OpenAiFishVisionService(
+            'https://api.openai.com/v1/chat/completions',
+            'gpt-4o',
+            '[REDACTED]',
+            10,
+            true
+        );
+        $service->clearQuotaExceeded();
+
+        Http::fake([
+            'api.openai.com/*' => Http::response([
+                'id' => 'chatcmpl_bad',
+                'model' => 'gpt-4o',
+                'choices' => [['message' => ['role' => 'assistant', 'content' => 'not json at all']]],
+            ], 200),
+        ]);
+
+        $result = $service->identifyFishVision('https://example.com/test.jpg');
+
+        $this->assertSame('invalid_response', $result['status']);
+        $this->assertNull($result['identification']);
+        $service->clearQuotaExceeded();
+    }
+
+    public function test_openai_fish_vision_service_maps_unknown_model_to_model_unavailable(): void
+    {
+        $service = new \App\Services\OpenAiFishVisionService(
+            'https://api.openai.com/v1/chat/completions',
+            'gpt-4o',
+            '[REDACTED]',
+            10,
+            true
+        );
+        $service->clearQuotaExceeded();
+
+        Http::fake([
+            'api.openai.com/*' => Http::response([
+                'error' => ['message' => 'The model gpt-4o does not exist.', 'type' => 'invalid_request_error', 'code' => 'model_not_found'],
+            ], 404),
+        ]);
+
+        $result = $service->identifyFishVision('https://example.com/test.jpg');
+
+        $this->assertSame('model_unavailable', $result['status']);
+        $this->assertNull($result['identification']);
+        $service->clearQuotaExceeded();
+    }
 }

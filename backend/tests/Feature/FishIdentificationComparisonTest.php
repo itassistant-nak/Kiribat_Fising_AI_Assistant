@@ -47,7 +47,7 @@ class FishIdentificationComparisonTest extends TestCase
         return [
             'id'     => 'resp_muse_test',
             'status' => 'completed',
-            'model'  => 'muse-glimmer',
+            'model'  => 'muse-spark-1.3',
             'output' => [
                 [
                     'content' => [
@@ -1181,5 +1181,33 @@ class FishIdentificationComparisonTest extends TestCase
         $this->assertNull($response->json('identification.confidence'));
         $response->assertJsonPath('identification.confidence_percentage', 'Not available');
         $response->assertJsonPath('identification.requires_human_confirmation', true);
+    }
+
+    /**
+     * P0-25: SAM success must never masquerade as Muse species identification.
+     * SAM is segmentation evidence only: no species, no invented confidence.
+     */
+    public function test_sam_success_does_not_masquerade_as_muse_species_identification(): void
+    {
+        $service = app(FishIdentificationComparisonService::class);
+
+        $normalized = $service->normalizeMuseResponse(
+            ['status' => 'model_unavailable', 'model' => 'muse-spark-1.3', 'identification' => null, 'error' => 'Model not found', 'latency_ms' => 12],
+            null,
+            12,
+            [
+                'status' => 'ok',
+                'fish_detected' => true,
+                'object_count' => 2,
+                'best_box' => ['x1' => 1, 'y1' => 2, 'x2' => 30, 'y2' => 40, 'has_mask' => true],
+                'latency_ms' => 99,
+                'raw_output' => 'sam-raw',
+            ]
+        );
+
+        $this->assertSame('model_unavailable', $normalized['status']);
+        $this->assertNull($normalized['suggested_species']);
+        $this->assertNull($normalized['confidence']);
+        $this->assertNull($normalized['scientific_name']);
     }
 }

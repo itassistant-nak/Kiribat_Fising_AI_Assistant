@@ -60,7 +60,7 @@ class MetaAiService
     }
 
     /**
-     * Get the configured multimodal vision model identifier (Muse Glimmer).
+     * Get the configured multimodal vision model identifier (Muse Spark).
      */
     public function getVisionModel(): string
     {
@@ -1003,7 +1003,7 @@ PROMPT;
     }
 
     /**
-     * Identify a fish species from a photograph using Meta Muse Glimmer multimodal vision.
+     * Identify a fish species from a photograph using Meta Muse multimodal vision.
      *
      * @param string $imageUrlOrDataUrl Public image URL or base64 data URL
      * @param array  $referenceSpecies  Known reference species records from Laravel DB / KB

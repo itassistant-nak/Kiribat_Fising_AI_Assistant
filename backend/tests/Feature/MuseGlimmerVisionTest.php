@@ -36,7 +36,7 @@ class MuseGlimmerVisionTest extends TestCase
         return [
             'id' => 'resp_glimmer_test',
             'status' => 'completed',
-            'model' => 'muse-glimmer',
+            'model' => 'muse-spark-1.3',
             'output' => [
                 [
                     'content' => [
@@ -59,14 +59,14 @@ class MuseGlimmerVisionTest extends TestCase
             'muse-wonder-1.0',
             '', // Unconfigured API key
             5,
-            'muse-glimmer',
+            'muse-spark-1.3',
             10
         );
 
         $result = $service->identifyFishVision('https://example.com/fish.jpg', []);
 
         $this->assertSame('unconfigured', $result['status']);
-        $this->assertSame('muse-glimmer', $result['model']);
+        $this->assertSame('muse-spark-1.3', $result['model']);
         $this->assertNull($result['identification']);
         $this->assertStringContainsString('MODEL_API_KEY is not configured', $result['error']);
 
@@ -100,7 +100,7 @@ class MuseGlimmerVisionTest extends TestCase
             'muse-wonder-1.0',
             'valid_glimmer_test_key',
             5,
-            'muse-glimmer',
+            'muse-spark-1.3',
             10
         );
 
@@ -112,7 +112,7 @@ class MuseGlimmerVisionTest extends TestCase
         $result = $service->identifyFishVision('https://example.com/test_fish.jpg', $refSpecies);
 
         $this->assertSame('completed', $result['status']);
-        $this->assertSame('muse-glimmer', $result['model']);
+        $this->assertSame('muse-spark-1.3', $result['model']);
         $this->assertNotNull($result['identification']);
         $this->assertSame('Te Okaoka', $result['identification']['kiribati_name']);
         $this->assertSame('Titan Triggerfish', $result['identification']['english_name']);
@@ -132,7 +132,7 @@ class MuseGlimmerVisionTest extends TestCase
 
             return $request->url() === 'https://api.meta.ai/v1/responses'
                 && $request->hasHeader('Authorization', 'Bearer valid_glimmer_test_key')
-                && $request['model'] === 'muse-glimmer'
+                && $request['model'] === 'muse-spark-1.3'
                 && $imageUrl === 'https://example.com/test_fish.jpg'
                 && str_contains($promptText, 'Te Okaoka')
                 && str_contains($promptText, 'Official Kiribati fisheries reference species');
@@ -156,7 +156,7 @@ class MuseGlimmerVisionTest extends TestCase
             'https://api.meta.ai/v1/responses' => Http::response([
                 'id' => 'resp_md_test',
                 'status' => 'completed',
-                'model' => 'muse-glimmer',
+                'model' => 'muse-spark-1.3',
                 'output' => [
                     [
                         'content' => [
@@ -172,7 +172,7 @@ class MuseGlimmerVisionTest extends TestCase
             'muse-wonder-1.0',
             'test_key',
             5,
-            'muse-glimmer',
+            'muse-spark-1.3',
             10
         );
 
@@ -212,11 +212,11 @@ class MuseGlimmerVisionTest extends TestCase
                     ], 200);
                 }
 
-                if ($model === 'muse-glimmer') {
+                if ($model === 'muse-spark-1.3') {
                     return Http::response([
                         'id' => 'resp_glimmer_primary',
                         'status' => 'completed',
-                        'model' => 'muse-glimmer',
+                        'model' => 'muse-spark-1.3',
                         'output' => [[
                             'content' => [['type' => 'output_text', 'text' => json_encode($glimmerFish)]],
                         ]],
@@ -253,7 +253,8 @@ class MuseGlimmerVisionTest extends TestCase
         $response->assertJsonPath('identification.pipeline_stage', 'db_image_match');
         $response->assertJsonPath('identification_pipeline.stage_reached', 1);
         $response->assertJsonPath('identification.meta_model.glimmer_vision.status', 'completed');
-        $this->assertStringContainsString('Muse Glimmer', (string) $response->json('identification.model'));
+        $this->assertStringContainsString('Meta Muse', (string) $response->json('identification.model'));
+        $this->assertStringContainsString('muse-spark-1.3', (string) $response->json('identification.model'));
 
         // Assert SAM evidence and Muse Wonder advisory were also preserved
         $response->assertJsonPath('identification.segmentation.status', 'ok');
@@ -435,7 +436,7 @@ class MuseGlimmerVisionTest extends TestCase
                 $payload = $request->data();
                 $model = $payload['model'] ?? '';
 
-                if ($model === 'muse-glimmer') {
+                if ($model === 'muse-spark-1.3') {
                     // Muse Glimmer throws 500 error
                     return Http::response(['error' => 'Vision server timeout'], 500);
                 }
@@ -494,7 +495,7 @@ class MuseGlimmerVisionTest extends TestCase
         $response = $this->getJson('/api/ai/meta-health');
 
         $response->assertStatus(200);
-        $response->assertJsonPath('image_modality.muse_glimmer_vision_model', 'muse-glimmer');
+        $response->assertJsonPath('image_modality.muse_glimmer_vision_model', 'muse-spark-1.3');
         $response->assertJsonPath('image_modality.muse_glimmer_multimodal_vision', true);
         $response->assertJsonPath('image_modality.muse_glimmer_primary_classifier', true);
         $response->assertJsonPath('image_modality.sam_supports_image', true);
@@ -515,7 +516,7 @@ class MuseGlimmerVisionTest extends TestCase
             'muse-wonder-1.0',
             'valid_glimmer_test_key',
             5,
-            'muse-glimmer',
+            'muse-spark-1.3',
             10
         );
 
@@ -539,7 +540,7 @@ class MuseGlimmerVisionTest extends TestCase
             'muse-wonder-1.0',
             'valid_glimmer_test_key',
             5,
-            'muse-glimmer',
+            'muse-spark-1.3',
             10
         );
 
@@ -563,7 +564,7 @@ class MuseGlimmerVisionTest extends TestCase
             'muse-wonder-1.0',
             'invalid_key',
             5,
-            'muse-glimmer',
+            'muse-spark-1.3',
             10
         );
 
@@ -597,7 +598,7 @@ class MuseGlimmerVisionTest extends TestCase
             'muse-wonder-1.0',
             'valid_key',
             5,
-            'muse-glimmer',
+            'muse-spark-1.3',
             10
         );
 

@@ -457,3 +457,13 @@
 
 
 
+
+## ADR-032 — Muse Spark 1.3 Is the Vision Model; SAM Never Substitutes for Muse (accepted)
+- Status: Accepted (P0-25, 2026-11-05).
+- Context: Authenticated `GET /v1/models` listed muse-wonder-1.0 (text), sam-3.1 (segmentation) and muse-spark-1.3/1.2/1.1, but not `muse-glimmer`, which `.env` had configured for vision — so live vision calls targeted an unavailable model while mocked `muse-glimmer` tests stayed green. Separately, `FishIdentificationComparisonService::normalizeMuseResponse` rewrote SAM success as a Muse `success` with invented 0.94 confidence and `Actinopterygii`, and the dashboard labelled the Muse slot as SAM, producing `SAM unconfigured or unavailable: Meta Muse Glimmer identification failed.`
+- Decision:
+  1. Vision identification + description use `muse-spark-1.3` (`META_AI_VISION_MODEL`); `muse-wonder-1.0` stays text advisory, `sam-3.1` stays segmentation only.
+  2. SAM evidence never becomes a Muse provider result: no species, no confidence, no `success` substitution. Muse failure stays visible with its own status; SAM renders only from `identification.segmentation`.
+  3. Provider key `muse_glimmer` is retained for API/mobile compatibility; display names and model identifiers show the real configured model.
+  4. OpenAI malformed JSON maps to `invalid_response` and HTTP 404 to `model_unavailable`, preserved through comparison normalization.
+- Consequences: Honest per-provider status (both_failed / single_provider_result remain truthful); live vision still requires one user-approved `muse-spark-1.3` image probe before claiming live identification works.

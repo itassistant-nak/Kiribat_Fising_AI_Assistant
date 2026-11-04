@@ -38,6 +38,7 @@ Only mark `DONE` when acceptance criteria are tested. Each agent claims one task
 | P0-22 | P0 | Meta Muse Glimmer Schema Correction & OpenAI Quota Hardening | DONE | Antigravity 2026-11-04 (+12:00) | main | Fixed Meta input[0].content schema, base64 dataUrl encoding, OpenAI quota caching and cooldown, explicit status mapping (quota_exceeded/rate_limited/unauthorized/invalid_payload), 128/128 backend tests pass |
 | P0-23 | P0 | DNS Stall Fix: ResolvesApiEndpoints in AiIdentificationController | DONE | Antigravity 2026-11-04 (+12:00) | main | Added ResolvesApiEndpoints trait and getCurlOptions() to resolveImageDataUrl() HTTP external image fetch; eliminates 5–10s getaddrinfo() stall; 128/128 backend tests pass |
 | P0-24 | P0 | Free deployment: Railway (Laravel backend + Next.js frontend) | DONE | Antigravity 2026-11-04T21:08 (+12:00) | main | Both services live on Railway. railway.json + nixpacks.toml + .nvmrc + CORS + BACKEND_URL env var wired. Commit 4b59e0e. |
+| P0-25 | P0 | Muse Spark 1.3 vision model + SAM/Muse provider independence | DONE | Muse Code (muse-wonder-1.0) session 01a1a891 2026-11-05 (+12:00) | main | Vision model muse-spark-1.3 (verified in account list; muse-glimmer not listed); SAM never presented as species ID or 0.94 confidence; Muse failure stays visible; OpenAI invalid_response/model_unavailable distinct; 131/131 PHPUnit pass (1369 assertions), Next build clean, Flutter not run (read-only SDK sandbox, no Dart changed); SAM/Muse backend+frontend decoupling also captured in external commit 097ceae |
 
 ---
 - Task ID: P0-23 (DNS Stall Fix: ResolvesApiEndpoints in AiIdentificationController)
@@ -667,3 +668,23 @@ Only mark `DONE` when acceptance criteria are tested. Each agent claims one task
 - Tests run and results: 10 passed PHPUnit tests; 7/7 Day 1 acceptance tests passed.
 - Status: DONE
 
+
+---
+- Task ID: P0-25 (Muse Spark 1.3 vision model + SAM/Muse provider independence)
+- Agent/model and session: Muse Code (muse-wonder-1.0) session 01a1a891 2026-11-05 (+12:00)
+- Branch/worktree: main
+- Files changed:
+  - `backend/.env.example`, `backend/config/services.php` (already defaulted), `backend/.env` (local only, not committed): `META_AI_VISION_MODEL=muse-spark-1.3`; `muse-glimmer` removed (not in authenticated account model list: muse-wonder-1.0, sam-3.1, muse-spark-1.3/1.2/1.1 + contributor variants)
+  - `backend/app/Services/FishIdentificationComparisonService.php` (removed both SAM->Muse success rewrites with fabricated 0.94 / Actinopterygii; SAM stays segmentation-only; OpenAI model_unavailable branch added) — partly captured in external commit `097ceae`
+  - `frontend/src/components/AiFishIdentifierModal.tsx` (Muse card now Meta Muse with real confidence/status, SAM only in segmentation card; selector renamed) — captured in external commit `097ceae`
+  - `backend/app/Services/OpenAiFishVisionService.php` (malformed JSON -> `invalid_response`; HTTP 404 -> `model_unavailable`)
+  - `backend/app/Services/MetaAiService.php`, `backend/app/Http/Controllers/AiIdentificationController.php` (labels + health recommendation use muse-spark-1.3 / configured vision model; provider key `muse_glimmer` kept for compatibility)
+  - `backend/tests/Feature/MuseGlimmerVisionTest.php` (mocks re-pointed muse-glimmer -> muse-spark-1.3), `FishIdentificationComparisonTest.php` (+ SAM masquerade regression test, failed before fix: `success` vs `model_unavailable`), `OpenAiVisionTest.php` (+ invalid_response, + model_unavailable)
+- Tests run and results:
+  - Focused new tests: 3 passed (8 assertions)
+  - Provider suites (Muse/SAM/OpenAI/Comparison/Fisheries): 67 passed, 1 label failure fixed, re-run Muse suite 12/12 passed
+  - `cd backend && php artisan test` — **131 passed (1369 assertions, 0 failures)**
+  - `cd frontend && npm run build` — clean, 0 errors
+  - Flutter: NOT run — SDK at ~/development/flutter is read-only in sandbox (`engine.stamp: Read-only file system`); no Dart files changed in this task
+  - No live/billable Meta or OpenAI calls made (all Http::fake mocks)
+- Status: DONE (live muse-spark-1.3 image probe still requires explicit approval — Phase F)

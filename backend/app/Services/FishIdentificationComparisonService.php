@@ -609,6 +609,27 @@ class FishIdentificationComparisonService
             ];
         }
 
+        if ($rawStatus === 'model_unavailable') {
+            return [
+                'provider_name'       => 'openai',
+                'model_identifier'    => $raw['model'] ?? $model,
+                'status'              => 'model_unavailable',
+                'model'               => $raw['model'] ?? $model,
+                'is_external_request' => true,
+                'suggested_species'   => null,
+                'scientific_name'     => null,
+                'confidence'          => null,
+                'visible_features'    => [],
+                'reasoning'           => 'No live AI identification was performed (OpenAI model unavailable).',
+                'alternatives'        => [],
+                'duration_ms'         => $raw['latency_ms'] ?? $durationMs,
+                'catalogue_match'     => false,
+                'species_id'          => null,
+                'raw_response'        => $raw['raw_response'] ?? null,
+                'error'               => $rawError ?? 'OpenAI model unavailable.',
+            ];
+        }
+
         if ($rawStatus !== 'completed' || empty($raw['identification'])) {
             $isInvalid = ($rawStatus === 'invalid_response')
                 || (is_string($rawError) && str_contains(strtolower($rawError), 'json'));

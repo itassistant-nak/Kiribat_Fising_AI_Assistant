@@ -1,5 +1,5 @@
 # Project State
-Updated: 2026-11-05 (SAM 3.1 Meta Provider & Frontend AI Card Integration deployed; 128/128 PHPUnit pass; Next.js build clean; pushed to origin/main)
+Updated: 2026-11-05 (P0-25 Muse Spark 1.3 vision + SAM/Muse independence; 131/131 PHPUnit pass; Next.js build clean; SAM/Muse decoupling in 097ceae, remainder uncommitted for review)
 
 ## Goal
 Deliver an offline-first Kiribati AI Fisheries Assistant hackathon prototype with real Meta-model fish identification, offline catches and GPS, synchronization, administrator review, and species-specific advisory alerts.
@@ -11,6 +11,11 @@ Deliver an offline-first Kiribati AI Fisheries Assistant hackathon prototype wit
 - Git repository: Linked to GitHub remote `origin` (`git@github.com:itassistant-nak/Kiribat_Fising_AI_Assistant.git`); branch `main` synchronized (`8a0ada7`).
 
 ## Verified working features
+- **Muse Spark 1.3 Vision & SAM/Muse Independence (P0-25):**
+  - Vision model is `muse-spark-1.3` (present in authenticated account list); `muse-glimmer` removed from config/example/local env (not listed, live calls could not succeed).
+  - SAM no longer masquerades as Muse: removed fabricated 0.94/`Actinopterygii` success rewrites; Muse failure stays visible, SAM renders only as segmentation evidence.
+  - OpenAI malformed JSON → `invalid_response`, HTTP 404 → `model_unavailable`.
+  - Verified this session: focused regression failed before fix (`success` vs `model_unavailable`), then `php artisan test` 131 passed (1369 assertions); Next.js build clean. Flutter not run (read-only SDK sandbox; no Dart changed). No live billable calls — live `muse-spark-1.3` image probe still needs approval.
 - **Meta SAM 3.1 Visual Segmentation & Frontend AI Card Integration:**
   - Prioritized `sam-3.1` segmentation evidence as the successful Meta AI provider output when vision models are unavailable or unconfigured.
   - Returns honest SAM 3.1 bounding boxes, fish detection confirmation (`✓ Fish Confirmed`), and object count.

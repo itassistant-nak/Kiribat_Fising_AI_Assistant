@@ -206,7 +206,7 @@ class OpenAiFishVisionService
                     ]);
 
                     return [
-                        'status'         => 'failed',
+                        'status'         => 'invalid_response',
                         'provider'       => 'openai',
                         'model'          => $targetModel,
                         'identification' => null,
@@ -247,6 +247,7 @@ class OpenAiFishVisionService
 
             $isRateLimit = ($statusCode === 429 && !$isQuota);
             $isTimeout = ($statusCode === 408 || $statusCode === 504);
+            $isModelUnavailable = ($statusCode === 404);
 
             if ($isQuota) {
                 $status = 'quota_exceeded';
@@ -257,6 +258,8 @@ class OpenAiFishVisionService
                 $status = 'rate_limited';
             } elseif ($isTimeout) {
                 $status = 'timeout';
+            } elseif ($isModelUnavailable) {
+                $status = 'model_unavailable';
             } else {
                 $status = 'failed';
             }

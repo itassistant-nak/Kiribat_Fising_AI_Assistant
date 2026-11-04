@@ -748,8 +748,8 @@ class AiIdentificationController extends Controller
                             : null,
                     ];
                     $confidence = $primaryIdent['confidence'];
-                    $matchedModel = 'Meta Muse Glimmer Multimodal Vision (' . $this->metaAiService->getVisionModel() . ')';
-                    $matchedModelVersion = 'muse-glimmer-v1';
+                    $matchedModel = 'Meta Muse Multimodal Vision (' . $this->metaAiService->getVisionModel() . ')';
+                    $matchedModelVersion = 'muse-vision-v1';
                     $dbSpecies = $dbMatch;
                 } else {
                     $glimmerVisionInfo['status'] = in_array('failed', [
@@ -1059,7 +1059,7 @@ class AiIdentificationController extends Controller
             'providers' => [
                 'muse_glimmer' => [
                     'status'            => $museStatus,
-                    'model'             => $glimmerVisionInfo['model'] ?? 'muse-glimmer',
+                    'model'             => $glimmerVisionInfo['model'] ?? $this->metaAiService->getVisionModel(),
                     'suggested_species' => $museSuccess && $primary ? [
                         'scientific_name' => $primary['scientific_name'] ?? null,
                         'common_name'     => $primary['english_name'] ?? null,
@@ -1203,7 +1203,7 @@ class AiIdentificationController extends Controller
             'muse_wonder_known_text_only' => true,
             'sam_image_model' => $this->samService->getModel(),
             'sam_supports_image' => true,
-            'recommendation' => 'Use muse-glimmer for primary multimodal fish species visual identification from photographs, sam-3.1 for object segmentation evidence, and muse-wonder-1.0 for biological advisory text reasoning.',
+            'recommendation' => 'Use muse-spark-1.3 for primary multimodal fish species visual identification from photographs, sam-3.1 for object segmentation evidence, and muse-wonder-1.0 for biological advisory text reasoning.',
         ];
         $health['openai_vision'] = [
             'configured'   => $this->openAiService->isConfigured(),
