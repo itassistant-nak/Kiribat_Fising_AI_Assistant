@@ -4,6 +4,7 @@ import '../../models/alert_state.dart';
 import '../../services/gis/zone_alert_engine.dart';
 import '../../data/database_helper.dart';
 import '../../services/sync/sync_service.dart';
+import 'live_map_screen.dart';
 
 class RadarScreen extends StatefulWidget {
   final SyncService syncService;
@@ -287,6 +288,31 @@ class _RadarScreenState extends State<RadarScreen> {
                 style: TextStyle(color: Colors.white70, fontSize: 11),
               ),
             ],
+            const SizedBox(height: 14),
+            ElevatedButton.icon(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.white,
+                foregroundColor: bgColor,
+                elevation: 0,
+              ),
+              icon: const Icon(Icons.map_rounded),
+              label: const Text(
+                'View Live Vessel on GPS Map',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => LiveMapScreen(
+                      syncService: widget.syncService,
+                      initialLat: _currentLat,
+                      initialLon: _currentLon,
+                    ),
+                  ),
+                );
+              },
+            ),
           ],
         ),
       ),

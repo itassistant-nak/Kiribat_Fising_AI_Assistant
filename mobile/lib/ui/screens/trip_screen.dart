@@ -3,6 +3,7 @@ import '../../data/database_helper.dart';
 import '../../models/trip_record.dart';
 import '../../services/sync/sync_service.dart';
 import '../../services/trip/trip_recorder.dart';
+import 'live_map_screen.dart';
 
 /// Fishing trip GPS route recorder (P1-05).
 /// Start a trip, record breadcrumb points offline, end the trip, then sync.
@@ -92,8 +93,19 @@ class _TripScreenState extends State<TripScreen> {
 
   Future<void> _endTrip() async {
     await _recorder.endTrip();
-    setState(() => _lastOutcome = 'Trip ended — queued for sync.');
+    setState(() => _lastOutcome = widget.syncService.isOnline
+        ? 'Trip ended — syncing live to Laravel backend...'
+        : 'Trip ended — queued for sync.');
     await _refresh();
+
+    if (widget.syncService.isOnline) {
+      widget.syncService.performFullSync().then((res) {
+        if (mounted && res.success) {
+          setState(() => _lastOutcome = 'Trip ended & synced live to Laravel backend.');
+          _refresh();
+        }
+      }).catchError((_) {});
+    }
   }
 
   Future<void> _syncNow() async {
@@ -121,6 +133,22 @@ class _TripScreenState extends State<TripScreen> {
         backgroundColor: recording ? Colors.teal : Colors.blueGrey,
         foregroundColor: Colors.white,
         actions: [
+          IconButton(
+            icon: const Icon(Icons.map_rounded),
+            tooltip: 'View Route on GPS Map',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => LiveMapScreen(
+                    syncService: widget.syncService,
+                    initialLat: _simLat,
+                    initialLon: _simLon,
+                  ),
+                ),
+              );
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.sync),
             tooltip: 'Sync trips now',
@@ -196,6 +224,24 @@ class _TripScreenState extends State<TripScreen> {
                       onPressed: _endTrip,
                       icon: const Icon(Icons.stop),
                       label: const Text('End Trip'),
+                    ),
+                  if (_activePoints.isNotEmpty) const SizedBox(height: 8),
+                  if (_activePoints.isNotEmpty)
+                    TextButton.icon(
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => LiveMapScreen(
+                              syncService: widget.syncService,
+                              initialLat: _simLat,
+                              initialLon: _simLon,
+                            ),
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.map_outlined),
+                      label: const Text('Inspect Live Route on GPS Map'),
                     ),
                 ],
               ),

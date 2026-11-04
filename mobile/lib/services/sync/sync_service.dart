@@ -34,6 +34,7 @@ class SyncService extends ChangeNotifier {
 
   bool _isAirplaneMode = false;
   bool _isSyncing = false;
+  bool _isBackendReachable = false;
   DateTime? _lastSyncTime;
   String? _lastError;
   int _pendingCatchesCount = 0;
@@ -55,6 +56,9 @@ class SyncService extends ChangeNotifier {
   String? get authenticatedUserEmail => _authenticatedUserEmail;
   String? get authenticatedUserName => _authenticatedUserName;
   bool get isAuthenticated => _authToken != null;
+  bool get isBackendReachable => _isBackendReachable;
+  bool get isOnline => !_isAirplaneMode && _isBackendReachable;
+  String get baseUrl => _api.baseUrl;
 
   SyncService({
     DatabaseHelper? db,
@@ -70,7 +74,44 @@ class SyncService extends ChangeNotifier {
 
   void setAirplaneMode(bool enabled) {
     _isAirplaneMode = enabled;
+    if (enabled) {
+      _isBackendReachable = false;
+    } else {
+      checkConnection();
+    }
     notifyListeners();
+  }
+
+  /// Probe backend health and ensure authentication if reachable
+  Future<bool> checkConnection() async {
+    if (_isAirplaneMode) {
+      _isBackendReachable = false;
+      notifyListeners();
+      return false;
+    }
+    try {
+      final healthy = await _api.checkHealth();
+      _isBackendReachable = healthy;
+      if (healthy && _authToken == null) {
+        await login();
+      }
+      notifyListeners();
+      return healthy;
+    } catch (_) {
+      _isBackendReachable = false;
+      notifyListeners();
+      return false;
+    }
+  }
+
+  /// Initialize live connection on app startup or resume:
+  /// checks health, logs in, refreshes caches, and syncs
+  Future<void> initializeLiveConnection() async {
+    await checkConnection();
+    if (isOnline) {
+      await performFullSync();
+    }
+    await refreshPendingCount();
   }
 
   /// Authenticate with Laravel API using fisher credentials
@@ -85,6 +126,8 @@ class SyncService extends ChangeNotifier {
       final user = res['user'] as Map<String, dynamic>?;
       _authenticatedUserEmail = user?['email'] as String? ?? email;
       _authenticatedUserName = user?['name'] as String?;
+      _isBackendReachable = true;
+      debugPrint('SyncService connected & logged in as $_authenticatedUserName ($_authenticatedUserEmail)');
       notifyListeners();
       return _authToken != null;
     } catch (e) {
@@ -105,16 +148,19 @@ class SyncService extends ChangeNotifier {
     _autoSyncTimer?.cancel();
     _autoSyncTimer = Timer.periodic(interval, (_) async {
       if (!_isAirplaneMode && !_isSyncing) {
-        final pending = await _db.getLocalCatches();
-        final pendingTrips = await _db.getLocalTrips(syncStatus: 'pending');
-        final hasPendingWork = pending.any((c) => c.syncStatus == 'pending' || c.syncStatus == 'failed') ||
-            pendingTrips.isNotEmpty ||
-            await _db.isCacheStale('advisory_zones');
+        await checkConnection();
+        if (_isBackendReachable) {
+          final pending = await _db.getLocalCatches();
+          final pendingTrips = await _db.getLocalTrips(syncStatus: 'pending');
+          final hasPendingWork = pending.any((c) => c.syncStatus == 'pending' || c.syncStatus == 'failed') ||
+              pendingTrips.isNotEmpty ||
+              await _db.isCacheStale('advisory_zones');
 
-        if (hasPendingWork) {
-          await ensureAuthenticated();
-          if (_authToken != null) {
-            await performFullSync(token: _authToken);
+          if (hasPendingWork) {
+            await ensureAuthenticated();
+            if (_authToken != null) {
+              await performFullSync(token: _authToken);
+            }
           }
         }
       }
@@ -291,6 +337,7 @@ class SyncService extends ChangeNotifier {
       }
 
       _lastSyncTime = now;
+      _isBackendReachable = true;
       await refreshPendingCount();
 
       final result = SyncResult(
@@ -305,11 +352,13 @@ class SyncService extends ChangeNotifier {
         timestamp: now,
       );
 
+      debugPrint('SyncService: ${result.message}');
       _isSyncing = false;
       notifyListeners();
       return result;
     } catch (e) {
       _lastError = 'Sync failed: $e';
+      _isBackendReachable = false;
       _isSyncing = false;
       notifyListeners();
       return SyncResult(
@@ -479,11 +528,25 @@ class SyncService extends ChangeNotifier {
     await refreshPendingCount();
   }
 
-  /// Identifies a fish photo online via Meta AI Vision, or falls back to offline SQLite species cache
-  Future<Map<String, dynamic>> identifyFishOnlineOrOffline(String photoUrl, {String? hint, String? token}) async {
+  Future<Map<String, dynamic>> identifyFishOnlineOrOffline(
+    String photoUrl, {
+    String? hint,
+    String? token,
+    String? provider,
+  }) async {
     if (!_isAirplaneMode) {
+      if (token == null && _authToken == null) {
+        await ensureAuthenticated();
+      }
+      final activeToken = token ?? _authToken;
+
       try {
-        final res = await _api.identifyFish(imageUrl: photoUrl, hint: hint, token: token);
+        final res = await _api.identifyFish(
+          imageUrl: photoUrl,
+          hint: hint,
+          token: activeToken,
+          provider: provider,
+        );
         if (res['status'] == 'success') {
           final identification = (res['identification'] ??
               res['primary_identification']) as Map<String, dynamic>?;
@@ -499,6 +562,9 @@ class SyncService extends ChangeNotifier {
                 res['candidate_matches'] ??
                 [],
             'segmentation': identification?['segmentation'],
+            'comparison_status': res['comparison_status'] as String?,
+            'providers': res['providers'] as Map<String, dynamic>?,
+            'comparison': res['comparison'] as Map<String, dynamic>?,
             'disclaimer': res['disclaimer'],
           };
         }

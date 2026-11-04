@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { CatchRecord, Species, api, AiIdentificationResult } from '../lib/api';
+import { CatchRecord, Species, api, AiIdentificationResult, resolvePhotoUrl } from '../lib/api';
 import {
   Sparkles,
   AlertCircle,
@@ -127,7 +127,7 @@ export default function CorrectionModal({
           : (catchRecord.verification_status === 'verified' ? 'approve' : 'correct')
       );
       setNotes(catchRecord.verification_notes || '');
-      setCurrentPhotoUrl(catchRecord.photo_url || null);
+      setCurrentPhotoUrl(resolvePhotoUrl(catchRecord.photo_url) || null);
       setPhotoChanged(false);
       setUploadedFile(null);
       setCustomUrlInput('');
@@ -213,7 +213,7 @@ export default function CorrectionModal({
 
   // Revert back to original catch photo
   const handleRevertPhoto = () => {
-    setCurrentPhotoUrl(catchRecord?.photo_url || null);
+    setCurrentPhotoUrl(resolvePhotoUrl(catchRecord?.photo_url) || null);
     setUploadedFile(null);
     setPhotoChanged(false);
     setAiResult(null);

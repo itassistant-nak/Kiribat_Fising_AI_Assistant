@@ -50,7 +50,8 @@ class AiFishIdentificationTest extends TestCase
         $data = $response->json('identification');
         $this->assertEquals('Te Bwere', $data['kiribati_name']);
         $this->assertEquals('Paddletail Snapper', $data['english_name']);
-        $this->assertGreaterThanOrEqual(0.85, $data['confidence']);
+        $this->assertNull($data['confidence']);
+        $this->assertEquals('Not available', $data['confidence_percentage']);
     }
 
     public function test_ai_identification_validates_missing_image()

@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Services\Concerns\ResolvesApiEndpoints;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -28,6 +29,7 @@ use Illuminate\Support\Facades\Log;
  */
 class SamSegmentationService
 {
+    use ResolvesApiEndpoints;
     protected string $baseUrl;
     protected string $model;
     protected ?string $apiKey;
@@ -112,11 +114,11 @@ class SamSegmentationService
             $response = Http::withToken($this->apiKey)
                 ->withHeaders(['Accept' => 'text/event-stream'])
                 ->timeout($this->timeout)
-                ->withOptions(['stream' => true])
+                ->withOptions(array_merge(['stream' => true], $this->getCurlOptions($this->baseUrl . '/responses')))
                 ->post($this->baseUrl . '/responses', $payload);
 
             $httpStatus = $response->status();
-            $body = (string) $response->getBody();
+            $body = $this->readResponseBody($response, $started);
             $latencyMs = (int) round((microtime(true) - $started) * 1000);
 
             if (!$response->successful()) {
@@ -168,6 +170,36 @@ class SamSegmentationService
     }
 
     /**
+     * Read streaming response body, terminating immediately if the stream signals [DONE].
+     */
+    protected function readResponseBody($response, float $started): string
+    {
+        try {
+            $stream = $response->toPsrResponse()->getBody();
+            if (!$stream->isReadable()) {
+                return (string) $response->getBody();
+            }
+            $buffer = '';
+            while (!$stream->eof()) {
+                $line = \GuzzleHttp\Psr7\Utils::readLine($stream);
+                $buffer .= $line;
+                if (trim($line) === 'data: [DONE]') {
+                    break;
+                }
+                if (strlen($buffer) > $this->maxRawBytes) {
+                    break;
+                }
+                if ((microtime(true) - $started) > $this->timeout) {
+                    break;
+                }
+            }
+            return $buffer;
+        } catch (\Throwable) {
+            return (string) $response->getBody();
+        }
+    }
+
+    /**
      * Accumulate output text from a Responses result. Supports SSE streams
      * (data: JSON events) and plain JSON bodies (offline fixtures).
      *
@@ -202,8 +234,11 @@ class SamSegmentationService
                 continue;
             }
             $data = trim(substr($line, 5));
-            if ($data === '' || $data === '[DONE]') {
+            if ($data === '') {
                 continue;
+            }
+            if ($data === '[DONE]') {
+                break;
             }
             $event = json_decode($data, true);
             if (!is_array($event)) {
@@ -317,6 +352,9 @@ class SamSegmentationService
     {
         if ($httpStatus === 401 || $httpStatus === 403) {
             return 'unauthorized';
+        }
+        if ($httpStatus === 429) {
+            return 'rate_limited';
         }
         if ($httpStatus === 404) {
             $message = strtolower($this->extractError($response));

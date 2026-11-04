@@ -1,5 +1,5 @@
 # Project State
-Updated: 2026-10-29 (P0-11 complete: Flutter online auto-sync & authentication with Laravel/MySQL backend verified live; 48 Flutter tests pass, 79 PHPUnit tests pass; MySQL 8 live sync confirmed)
+Updated: 2026-11-04 (P0-22 complete: Meta Responses Schema Correction & OpenAI Quota Hardening; 128 PHPUnit tests pass; 54+ Flutter tests pass)
 
 ## Goal
 Deliver an offline-first Kiribati AI Fisheries Assistant hackathon prototype with real Meta-model fish identification, offline catches and GPS, synchronization, administrator review, and species-specific advisory alerts.
@@ -11,6 +11,47 @@ Deliver an offline-first Kiribati AI Fisheries Assistant hackathon prototype wit
 - Git repository: Linked to GitHub remote `origin` (`git@github.com:itassistant-nak/Kiribat_Fising_AI_Assistant.git`); default branch `main`; all Days 1–4 commits published up to date (`d9dcdeb`).
 
 ## Verified working features
+- **Meta Muse Glimmer Responses Schema Correction & OpenAI Quota Hardening (P0-22):**
+  - Aligned Meta Model API request payload schema in `MetaAiService.php` to resolve `input[0].content did not match any supported type`: uses `input: [{ type: 'message', role: 'user', content: [{ type: 'input_text', text: ... }, { type: 'input_image', image_url: <dataUrlOrString> }] }]`.
+  - Added `toDataUrl()` to convert local filesystem images and uploaded fish photos to Base64 data URLs for Meta API multimodal ingestion.
+  - Hardened OpenAI error handling in `OpenAiFishVisionService.php`: detects HTTP 429/402 `insufficient_quota` and "no credits remaining", mapping to `quota_exceeded` and caching for 10 minutes (`openai_quota_exceeded`) to immediately short-circuit repeated redundant network calls.
+  - Distinguishes HTTP 401 (`unauthorized`) and standard 429 (`rate_limited`) from quota exhaustion.
+  - Hardened multi-provider comparison normalization in `FishIdentificationComparisonService.php` for `quota_exceeded`, `rate_limited`, `unauthorized`, `invalid_payload`, and `model_unavailable`.
+  - Maintained complete integrity: `single_provider_result` cleanly preserves successful provider data without fabricating missing provider outputs; `both_failed` returns strictly `null` confidence.
+  - Added comprehensive automated mocked feature tests across `MuseGlimmerVisionTest` (12/12 pass), `OpenAiVisionTest` (7/7 pass), and `FishIdentificationComparisonTest` (27/27 pass).
+  - All 128 backend tests pass (1360 assertions, 0 failures).
+- **SAM 3.1 Online Segmentation Hardening & SSE [DONE] Termination (P0-21):**
+  - Mapped HTTP 429 status from Meta Model API explicitly to `'rate_limited'` status in `SamSegmentationService::mapErrorStatus()`.
+  - Added line-by-line stream reading (`readResponseBody`) that terminates immediately upon encountering `data: [DONE]`, eliminating connection stalls on long-lived keep-alive streams.
+  - Updated `extractOutputText()` line parser to break cleanly upon receiving the `[DONE]` event without losing any prior accumulated output or breaking non-streaming JSON responses.
+  - Aligned `SUBMISSION_CHECKLIST.md` with ADR-016: bounding boxes and mask presence detected, but mask coverage remains honestly unknown (`null`) until the official base-85 arithmetic codec is ported.
+  - Added 2 new feature tests in `SamSegmentationTest` (10/10 passed; all 120 backend tests pass with 1328 assertions).
+- **Honest AI Provider Status, Confidence Provenance and Offline Fallback Integrity (P0-20):**
+  - Eliminated false fish identification (bonefish incorrectly identified as *Te Kuau* / Blacktip Grouper) by removing CRC32 modulo hashing in `FishIdentificationComparisonService` and `AiIdentificationController`.
+  - Removed fabricated confidence scores (94% and 89%) and artificial minimum latency clamps (`max(12, ...)` and `max(18, ...)`).
+  - Implemented explicit provider lifecycle statuses: `success`, `unavailable`, `timeout`, `invalid_response`, `fallback`, `insufficient_evidence`.
+  - When external vision models fail, timeout, or are unconfigured, provider confidence is strictly `null` ("Not available") and comparison status is `both_failed` (never `agreement`).
+  - Offline catalogue never forces species selection or pretents pre-written descriptions are visual observations; returns `insufficient_evidence` with null confidence unless an explicit hint matches, which is returned as honest reference context.
+  - Flutter mobile UI (`LogCatchScreen`) renders `UNAVAILABLE` badges, "Not performed", "Not available", "AI IDENTIFICATION UNAVAILABLE" banner, and offline catalogue card.
+  - 10 dedicated bonefish vs Te Kuau regression tests added in `FishIdentificationComparisonTest` (all 26 comparison tests pass; all 118 backend tests pass with 1322 assertions).
+- **Portal Connection & Auth Hardening (`frontend/`):**
+  - Added 10-second request timeout controller to `api.ts` to prevent infinite hanging fetch requests.
+  - Implemented 4.5-second race timeout and expired token auto-cleanup in `AuthContext.tsx`.
+  - Upgraded `"Connecting to MFMRD secure portal..."` loading screen with explicit escape hatch buttons ("Go to Login Screen" and "Sign In as Admin") and eliminated blank screen redirects.
+- **User AI Vision Provider Selection (`backend/`, `frontend/`, `mobile/`):**
+  - Backend routing in `AiIdentificationController`: Accepts `provider` (`'openai'`, `'meta'`/`'muse_glimmer'`, or `'compare'`/`'parallel'`). Runs selected provider with species catalog grounding or executes full parallel comparison.
+  - Next.js Admin Dashboard: Segmented selector (`⚖️ Compare Both`, `🔮 Meta Muse Glimmer`, `⚡ OpenAI Vision`) in `AiFishIdentifierModal.tsx`. Displays dual comparison cards on compare mode or single provider badge on single mode.
+  - Flutter Mobile App: Segmented choice chips (`⚖️ Both (Compare)`, `🔮 Meta Muse`, `⚡ OpenAI`) in `LogCatchScreen.dart`, passing provider through `SyncService` and `ApiClient`.
+  - Disagreement safety: Automated selection is blocked on conflict to force human verification.
+- **Parallel AI Fish Image Identification (Meta Muse Glimmer + OpenAI Vision) (`backend/` & `mobile/`):**
+  - Independent parallel evaluation of fish catch photos by Meta Muse Glimmer (`MetaAiService`) and OpenAI Vision (`OpenAiFishVisionService`).
+  - Standardized JSON schema across both providers (`scientific_name`, `common_name`, `kiribati_name`, `confidence`, `visible_traits`, `reasoning`, `alternatives`, `review_status`, `ciguatera_risk`).
+  - Catalog matching against Kiribati marine database (`species` table) by scientific name without fabricating records (`matched_catalog_species`).
+  - Comparison matrix computing statuses: `agreement`, `disagreement`, `single_provider_result`, `both_failed`, `insufficient_evidence`.
+  - Shared visual traits extraction comparing morphology observed by both models.
+  - Relational persistence in `fish_identification_providers` table recording catch reference, individual model outputs, confidence scores, execution latencies, agreement status, and human selection.
+  - Endpoints `POST /api/ai/compare-providers` and `POST /api/ai/identify-fish` with `compare: true` flag.
+  - Flutter Mobile UI: Side-by-side / dual provider cards, agreement/disagreement banner, visual traits list, explicit human verification prompt on conflict (auto-selection strictly forbidden), and 1-tap provider selection to populate the catch form.
 - **Laravel API Backend (`backend/`):**
   - RESTful endpoints for authentication, statistics, catches, species, and fishing trips.
   - Token-based authentication (Sanctum) and role-based access control (`admin`, `fisher`, `reviewer`).
@@ -66,6 +107,14 @@ Deliver an offline-first Kiribati AI Fisheries Assistant hackathon prototype wit
   - `POST /api/ai/identify-fish` combines SAM segmentation → KB primary → Muse advisory (`meta_model.advisory_notes`); adversarial-test proven: an advisory naming another species cannot change the returned identity.
   - `investigateImageModality()` probes image support only when explicitly called; `GET /api/ai/meta-health` reports modality (muse text-only, sam-3.1 image) without a billable image probe or key leakage.
   - Verified: 9 new `FisheriesAssistantTest` (all Meta calls mocked); full suite 79 PHPUnit passed (1064 assertions).
+- **Meta Muse Glimmer Multimodal Vision Fish Identification — P0-13 (`backend/` & `frontend/`):**
+  - Upgraded fish identification to use Meta's open-weight 30B multimodal vision model **Muse Glimmer** (`muse-glimmer` / `meta-models/Muse-Glimmer-30B`) as the primary online image classifier.
+  - `MetaAiService::identifyFishVision` sends multimodal payloads (`input_image` / `image_url` data URLs + prompt) grounded with authentic Kiribati reference species from the Laravel backend database (`Species::class`).
+  - Returns structured JSON determination (`kiribati_name`, `english_name`, `scientific_name`, `confidence`, observed visual morphology, and biological reasoning).
+  - Resilient hybrid architecture: if Muse Glimmer is unconfigured or offline, automatically falls back to the deterministic Kiribati marine morphological knowledge base without service interruption.
+  - Safety and governance (ADR-002/023): AI output is strictly advisory (`requires_human_confirmation: true`), photo-toxin disclaimers are preserved, and SAM 3.1 segmentation evidence is maintained.
+  - Frontend affordance: `AiFishIdentifierModal.tsx` renders a prominent `✨ Meta Muse Glimmer Vision` badge and visual reasoning display.
+  - Verified: 6 new `MuseGlimmerVisionTest` passed; full backend suite 86 PHPUnit tests passed (1111 assertions, 0 failures).
 - **Fish Image Correction, AI Re-Identification, and Human Verification (`CorrectionModal.tsx` & `VerificationController.php`):**
   - Enabled fisheries officers and administrators to change or correct fish images on recorded catches via 1-click verified Kiribati specimen presets, direct file uploads (JPEG/PNG/WEBP), or image URLs.
   - Automated Meta AI Vision re-identification executes immediately when a new fish photo is selected, extracting confidence scores, morphological visual features, and pre-selecting the recommended species in the verification form.
@@ -97,6 +146,14 @@ Deliver an offline-first Kiribati AI Fisheries Assistant hackathon prototype wit
   - Flutter `TripRecorder` with 10 m / 5 s breadcrumb filters, 50 m low-accuracy rejection (ADR-013 rule), SQLite `local_trips` + `local_trip_points` tables, and `resumeActiveTrip` so routes survive restarts.
   - `SyncService` step 4 uploads pending trips (create-once via stored `server_trip_id`, push points, close completed trips); Sync screen shows Pending Trips metric; Trips tab in bottom nav with simulated-GPS recording UI.
   - No frontend change needed: `FisheriesMap` already renders synced polylines from `GET /api/trips/{id}/route`.
+- **Fisherman Live GPS Map — P1-07 (`mobile/`):**
+  - Interactive live GPS map screen (`LiveMapScreen`) using `flutter_map` v8 and `latlong2` centered on South Tarawa lagoon (`[1.365, 172.980]`), mirroring the Next.js admin dashboard Leaflet map.
+  - Real-time vessel marker with heading orientation indicator, pulsing GPS accuracy circle (`±accuracy m`), and 3-tier status banner (🟢 Safe Waters / 🟡 Caution Warning / 🔴 Active Advisory Warning).
+  - Published advisory zone polygon boundaries rendered from SQLite (`advisory_zones`) with dashed stroke styling and interactive bottom sheet details (hospital evidence, affected species, CFP risk levels).
+  - Recorded catch location markers (verified, pending, flagged status icons) and active fishing trip route polylines.
+  - Dedicated layer toggles (Advisories, Catches, Routes) and 1-tap Recenter on Vessel button.
+  - Live movement simulation controls (Bairiki Safe Waters, Caution Boundary, Inside Betio Red Zone) for testing real-time spatial transitions and coordinate alerts.
+  - Direct bottom navigation bar integration (destination 1: `Live GPS Map`) and quick-launch buttons from `RadarScreen` and `TripScreen`.
 - **Day 4 Reference Database Hardening — P1-06 (`backend/`):**
   - Structured flags on `species`: `verification_status` (verified/needs_review), `record_type` (species/taxonomic_group/non_fish_organism), `scientific_name_as_provided` (verbatim) via `2026_10_29_000001` migration; defaults fail closed to needs_review.
   - 35-entry import classified per source ID (12 needs_review species + 9 groups + 12 non-fish among imports); curated 9 explicitly verified and untouched; seeder idempotent with backfill only for its own prior imports.
@@ -113,21 +170,25 @@ Deliver an offline-first Kiribati AI Fisheries Assistant hackathon prototype wit
   - Seed reproducibility verified: `migrate:fresh --seed` → 5 users, 9 species, 2 trips, 8 catches, 3 zones.
   - MySQL schema statically compatible (`json`, single `dropColumn`); live run sandbox-blocked. Android SDK 36.1.0 + licenses present; APK blocked (no JDK, downloads blocked).
 - **Automated Test Coverage:**
-  - 42 Flutter tests pass (`flutter test`: 12 GIS, 4 SQLite sync, 4 AI catch, 6 trip route, 6 photo capture, 4 photo upload, 5 photo quality, 1 widget), verified 2026-10-28 via writable SDK copy with proxy bypassed for loopback.
+  - 52 Flutter tests pass (`flutter test`: 12 GIS, 4 SQLite sync, 4 AI catch, 6 trip route, 6 photo capture, 4 photo upload, 5 photo quality, 6 auto-sync, 4 live GPS map, 1 widget), verified 2026-10-29.
   - 9 Day 3 acceptance tests pass (`node scripts/verify_day3_acceptance.js`).
   - 8 P1-05 acceptance checks pass (`node scripts/verify_trip_routes_acceptance.js` vs live server), verified 2026-10-28.
-  - 46 PHPUnit feature tests pass (`php artisan test` — 373 assertions, 0 failures).
+  - 79 PHPUnit feature tests pass (`php artisan test` — 1064 assertions, 0 failures), verified 2026-10-29.
   - 7 Day 1 acceptance criteria pass (`node scripts/verify_day1_acceptance.js`).
   - 8 Day 2 advisory zone acceptance criteria pass (`node scripts/verify_day2_acceptance.js`).
-  - Next.js production build passes (`npm run build` in 536ms with 0 errors).
+  - Next.js production build passes (`npm run build` with 0 errors).
 
 ## Current milestone
-P0-09 Muse Wonder fisheries assistant complete (79 PHPUnit, 1064 assertions; SAM+KB+Muse combined, no invented species). P1-06 Day 4 reference-database hardening complete (65 PHPUnit, 981 assertions; catalog 42 with structured verification). P0-08 Day 4 integration remains verified (17/18 workflow steps green with 1 documented FAIL + 2 BLOCKED). Day 5 next: commit backlog, catch idempotency, GPS defaults, MySQL/APK/Meta/video — see `SUBMISSION_CHECKLIST.md §10`.
+P0-13 Meta Muse Glimmer multimodal vision fish species identification complete (86 PHPUnit tests pass, 1111 assertions; 52 Flutter mobile tests pass; Next.js builds clean in 153ms; Muse Glimmer primary classifier with DB species grounding and KB fallback). P0-09 Muse Wonder fisheries assistant complete. P1-06 Day 4 reference-database hardening complete. P0-08 Day 4 integration remains verified. Day 5 next: commit backlog, live end-to-end testing, submission readiness.
 
 ## Blockers
 - No blockers for a local-demo submission. Bounded claims: live Meta vision (no key/model), Android APK (no JDK), MySQL live run (sandbox veto) — all documented in `SUBMISSION_CHECKLIST.md` with Day 5 paths. Only Day 1 is committed (user decision pending).
 
 ## Last test run
+- Flutter Web Build & AI Comparison (2026-11-03): `flutter test` passed all 55 tests (0 failures); `flutter analyze` clean (0 errors); `flutter build web --release` completed clean (62.9s); freshly generated web bundle (`main.dart.js`, `sqlite3.wasm`, `flutter_bootstrap.js`) verified serving at `http://127.0.0.1:8080` with HTTP 200 OK.
+- P0-19 (2026-11-03): `php artisan test` 108 passed (1,260 assertions, 0 failures) incl. 2 new offline fallback tests in `FishIdentificationComparisonTest`; Next.js production build clean (121ms); stack running on 8000, 3000, 8080.
+- P1-07 (2026-10-29): `flutter test` (mobile) — 52 passed (0 failures) incl. 4 new LiveMapTest (render, layers dialog, simulated movement to red zone, vessel status sheet); `php artisan test` 79 passed (1064 assertions); analyzer clean; Chrome web app launched and verified.
+- P0-11 (2026-10-29): Flutter online auto-sync engine with Laravel/MySQL backend verified; 48 Flutter tests pass, 79 PHPUnit tests pass; live sync script 6/6 passed against live MySQL.
 - P0-09 (2026-10-29): `php artisan test` 79 passed (1064 assertions) incl. 9 new FisheriesAssistantTest; focused run 9 passed (59 assertions); php -l clean; no production code changed.
 - P0-10 (2026-10-29): `php artisan test` 70 passed (1005 assertions); `flutter test` 43 passed; `npm run build` clean; live workflow 12/12; MySQL 8 seed 5/42/2/8/3.
 - `cd backend && php artisan test` — 65 passed (981 assertions, 0 failures) incl. 9 new ReferenceDatabaseTest (P1-06), verified 2026-10-29; `migrate:fresh --seed` → 42 species (9 verified species, 12 needs_review species, 9 taxonomic_group, 12 non_fish_organism), 5 users.
@@ -179,3 +240,10 @@ P0-09 Muse Wonder fisheries assistant complete (79 PHPUnit, 1064 assertions; SAM
 | 2026-10-29 | P0-09-Agent (Muse Code, session 01a18594) | Finished P0-09 (took over stale claim per user): added 9 mocked FisheriesAssistantTest proving KB+SAM+Muse grounding, no invented species, modality probe/health honesty; production code unchanged | 79 PHPUnit passed (1064 assertions); focused 9/59; php -l clean | P0-03-AI owner close; live Meta probe/APK/video/submission (external/user) |
 | 2026-10-29 16:40 (+12:00) | MySQL-Database-Agent | Created local MySQL database `kiribati_fisheries` on localhost:3306, configured `backend/.env`, migrated and seeded all 11 migrations (5 users, 42 species, 2 trips, 8 catches, 3 zones), imported `kiribati_marine_species_35.sql`, and reloaded backend server. Verified live login and stats API with HTTP 200. | MySQL connection live, 5 users/42 species/35 reference rows in MySQL; `/api/admin/stats` 200 OK | Stack fully operational with MySQL backend |
 | 2026-10-29 17:15 (+12:00) | Flutter-MySQL-Sync-Agent | Built and verified Flutter online auto-sync engine with Laravel/MySQL backend: added Sanctum bearer authentication (`ApiClient.login`, `SyncService.ensureAuthenticated`), periodic auto-sync timer (30s) reacting to pending catches/trips and stale cache, aligned species SQLite table with `verification_status` and `record_type`, created `offline_auto_sync_test.dart` suite, compiled Flutter web bundle, and verified live sync of catches, UUID idempotency, and GPS breadcrumb routes into MySQL. | 48 Flutter tests passed; 79 PHPUnit tests passed; live end-to-end sync script (`verify_flutter_mysql_sync.js`) 6/6 passed against live MySQL; Flutter web compiled and served on :8080 | System ready for live demonstration and submission |
+| 2026-10-29 19:00 (+12:00) | Flutter-LiveMap-Agent | Built Fisherman Live GPS Map in Flutter (`LiveMapScreen` with `flutter_map`, `latlong2`, vessel live marker, advisory polygons, catch pins, trip routes, layer toggles, simulation controls; integrated into bottom nav, radar, and trip screens) | 52 Flutter tests passed (4 new live map tests), 79 PHPUnit tests passed, analyzer clean, Chrome app launched | Complete Day 5 submission checklist & external review |
+| 2026-10-30 14:10 (+12:00) | MuseGlimmer-Agent | P0-13: Integrated Meta Muse Glimmer multimodal vision (`muse-glimmer`) as primary online fish species classifier grounded in Laravel DB species, with SAM 3.1 & Muse Wonder advisory notes, resilient KB fallback, and frontend visual reasoning | 86 PHPUnit tests passed (1111 assertions); 6/6 MuseGlimmerVisionTest passed; 52/52 Flutter tests passed; Next.js builds cleanly (153ms) | Ready for user review and commit backlog decision |
+| 2026-11-03 07:35 (+12:00) | Antigravity | P0-14: Fixed photo display bug — added `/uploads/*` and `/storage/*` Next.js proxy rewrites to port 8000; added `resolvePhotoUrl()` to strip backend origin from absolute URLs; applied in CatchTable, SpeciesCatalog, CorrectionModal, and AiFishIdentifierModal; fixed `serve_flutter.py` 127.0.0.1 bind | 86 PHPUnit tests passed; Next.js build clean (525ms); images load via proxy | Proceed to P0-15 3-stage pipeline |
+| 2026-11-03 08:15 (+12:00) | Antigravity | P0-15: Built 3-Stage Progressive AI Fish Species Identification Pipeline: Stage 1 (Backend DB species with catalogued photos) -> Stage 2 (Curated Kiribati morphological trait profiles) -> Stage 3 (Global web & marine taxonomy vision), with audit tracking, stage badges, and unconfigured KB fallback | 88 PHPUnit tests passed (1129 assertions); 8/8 MuseGlimmerVisionTest passed; Next.js compiled cleanly (580ms); live stack healthy | Ready for live user testing |
+| 2026-11-03 12:10 (+12:00) | Antigravity | P0-16: Built OpenAI Vision API Ultimate Fallback (Stage 4): Created OpenAiVisionService (gpt-4o vision), configured services.php & .env.example, orchestrated in AiIdentificationController as ultimate fallback after Meta (Stages 1-3) & local species-matching finish; added 4-stage UI in AiFishIdentifierModal.tsx (progress tracker, Stage 4 badge, audit trail, reasoning card) | 92 PHPUnit tests passed (1164 assertions) incl. 4 new OpenAiVisionTest; Next.js compiled cleanly (846ms, 0 errors); live stack healthy on :8000, :3030, :8080 | Ready for live user demonstration |
+| 2026-11-03 19:50 (+12:00) | Antigravity | P0-17: Built Parallel AI Fish Image Identification (Meta Muse Glimmer + OpenAI Vision): Created OpenAiFishVisionService, FishIdentificationComparisonService, fish_identification_providers migration/model, compare-providers & identify-fish compare endpoints, normalized JSON schemas, scientific name catalog matching, comparison matrix (agreement/disagreement), and Flutter mobile dual provider UI with selection controls and explicit verification prompt | 104 PHPUnit tests passed (1234 assertions); 54 Flutter tests passed across 11 suites; zero regressions | Ready for live user demonstration |
+

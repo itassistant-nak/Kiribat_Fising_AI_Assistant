@@ -22,6 +22,12 @@ Route::get('/health', function () {
 
 // Authentication
 Route::post('/auth/login', [AuthController::class, 'login']);
+Route::get('/auth/login', function () {
+    return response()->json([
+        'message' => 'The login route requires a POST request with "email" and "password" JSON payload.',
+        'supported_methods' => ['POST'],
+    ], 405);
+});
 
 // Authenticated Routes
 Route::middleware('auth:sanctum')->group(function () {
@@ -40,6 +46,7 @@ Route::middleware('auth:sanctum')->group(function () {
 
     // AI Vision Fish Identification & Model Assistance
     Route::post('/ai/identify-fish', [\App\Http\Controllers\AiIdentificationController::class, 'identify']);
+    Route::post('/ai/compare-providers', [\App\Http\Controllers\AiIdentificationController::class, 'compareProviders']);
 
     // Meta Model API Health Check & Probe (Admin & Reviewer Only)
     Route::middleware(RequireAdminOrReviewer::class)->group(function () {

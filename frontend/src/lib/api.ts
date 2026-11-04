@@ -6,6 +6,27 @@ export const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL ||
   (typeof window !== 'undefined' ? '/api' : 'http://127.0.0.1:8000/api');
 
+/**
+ * Convert an absolute backend photo URL to a relative path so it routes
+ * through the Next.js proxy rewrites (/uploads/* and /storage/*).
+ * e.g. "http://127.0.0.1:8000/uploads/catches/x.jpg" → "/uploads/catches/x.jpg"
+ * Returns the original value unchanged for data: URLs or already-relative paths.
+ */
+export function resolvePhotoUrl(url?: string | null): string | null {
+  if (!url) return null;
+  if (url.startsWith('data:')) return url;
+  try {
+    const parsed = new URL(url);
+    // Strip the origin — the Next.js proxy handles the backend host
+    if (parsed.pathname.startsWith('/uploads/') || parsed.pathname.startsWith('/storage/')) {
+      return parsed.pathname;
+    }
+  } catch {
+    // Not an absolute URL — already a relative path or a plain string
+  }
+  return url;
+}
+
 export interface User {
   id: number;
   name: string;
@@ -142,7 +163,11 @@ export function setToken(token: string | null): void {
   }
 }
 
-async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+export interface RequestOptions extends RequestInit {
+  timeoutMs?: number;
+}
+
+async function request<T>(endpoint: string, options: RequestOptions = {}): Promise<T> {
   const token = getToken();
   const headers: Record<string, string> = {
     'Accept': 'application/json',
@@ -156,14 +181,24 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
 
   const url = `${API_BASE_URL}${endpoint}`;
   let response: Response;
+  const isAiEndpoint = endpoint.startsWith('/ai/');
+  const timeoutMs = options.timeoutMs ?? (isAiEndpoint ? 60000 : 20000);
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   try {
     response = await fetch(url, {
       ...options,
       headers,
+      signal: options.signal || controller.signal,
     });
   } catch (err: unknown) {
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      throw new Error(`Connection timed out while contacting Fisheries API (${endpoint}).`);
+    }
     const errorMsg = err instanceof Error ? err.message : 'Network error';
     throw new Error(`Failed to connect to Fisheries API (${url}): ${errorMsg}`);
+  } finally {
+    clearTimeout(timeoutId);
   }
 
   if (response.status === 401) {
@@ -372,11 +407,12 @@ export const api = {
     return request<{ advisory_zone_id: number; zone_title: string; audit_logs: AdvisoryAuditLog[]; count: number }>(`/advisory-zones/${id}/audit-logs`);
   },
 
-  async identifyFish(payload: { image?: File | string; image_url?: string; hint?: string }): Promise<AiIdentificationResponse> {
+  async identifyFish(payload: { image?: File | string; image_url?: string; hint?: string; provider?: string }): Promise<AiIdentificationResponse> {
     if (payload.image instanceof File) {
       const formData = new FormData();
       formData.append('image', payload.image);
       if (payload.hint) formData.append('hint', payload.hint);
+      if (payload.provider) formData.append('provider', payload.provider);
       return request<AiIdentificationResponse>('/ai/identify-fish', {
         method: 'POST',
         body: formData,
@@ -389,6 +425,7 @@ export const api = {
         image: typeof payload.image === 'string' ? payload.image : undefined,
         image_url: payload.image_url,
         hint: payload.hint,
+        provider: payload.provider,
       }),
     });
   },
@@ -476,6 +513,26 @@ export interface AiIdentificationCandidate {
   confidence: number;
 }
 
+export interface PipelineStageInfo {
+  attempted: boolean;
+  status: string;
+  latency_ms?: number;
+  confidence?: number | null;
+  reasoning?: string | null;
+  error?: string | null;
+}
+
+export interface IdentificationPipeline {
+  stage_reached?: number | null;
+  stage_name?: 'db_image_match' | 'morphological_match' | 'web_vision' | 'openai_vision' | 'knowledge_base_fallback' | string | null;
+  stages?: {
+    db_image_match?: PipelineStageInfo;
+    morphological_match?: PipelineStageInfo;
+    web_vision?: PipelineStageInfo;
+    openai_vision?: PipelineStageInfo;
+  };
+}
+
 export interface AiIdentificationResult {
   species_id?: number | null;
   kiribati_name: string;
@@ -489,13 +546,54 @@ export interface AiIdentificationResult {
   model_version: string;
   analyzed_at: string;
   candidates: AiIdentificationCandidate[];
+  source?: string;
+  pipeline_stage?: string | null;
+  pipeline?: IdentificationPipeline;
+  meta_model?: {
+    configured?: boolean;
+    model?: string;
+    advisory_notes?: string | null;
+    status?: string;
+    glimmer_vision?: {
+      configured?: boolean;
+      model?: string;
+      status?: string;
+      reasoning?: string | null;
+      latency_ms?: number;
+      pipeline?: IdentificationPipeline;
+    };
+  };
+  openai_model?: {
+    configured?: boolean;
+    model?: string;
+    status?: string;
+    attempted?: boolean;
+    reasoning?: string | null;
+    latency_ms?: number;
+  };
 }
+
 
 export interface AiIdentificationResponse {
   status: string;
   image_url: string;
   identification: AiIdentificationResult;
+  identification_pipeline?: IdentificationPipeline;
   disclaimer: string;
+  comparison_status?: 'agreement' | 'disagreement' | 'single_provider_result' | 'both_failed' | 'insufficient_evidence' | string;
+  providers?: {
+    muse_glimmer?: any;
+    openai?: any;
+    [key: string]: any;
+  };
+  comparison?: {
+    status?: string;
+    agreement_field?: string;
+    shared_features?: string[];
+    warning_message?: string;
+    requires_human_choice?: boolean;
+    [key: string]: any;
+  };
 }
 
 export interface GeoJsonPolygon {

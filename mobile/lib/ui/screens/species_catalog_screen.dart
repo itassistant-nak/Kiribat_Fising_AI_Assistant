@@ -1,9 +1,12 @@
 import 'package:flutter/material.dart';
 import '../../models/species.dart';
 import '../../data/database_helper.dart';
+import '../../services/sync/sync_service.dart';
 
 class SpeciesCatalogScreen extends StatefulWidget {
-  const SpeciesCatalogScreen({super.key});
+  final SyncService? syncService;
+
+  const SpeciesCatalogScreen({super.key, this.syncService});
 
   @override
   State<SpeciesCatalogScreen> createState() => _SpeciesCatalogScreenState();
@@ -21,12 +24,18 @@ class _SpeciesCatalogScreenState extends State<SpeciesCatalogScreen> {
   void initState() {
     super.initState();
     _loadSpecies();
+    widget.syncService?.addListener(_onSyncUpdate);
   }
 
   @override
   void dispose() {
+    widget.syncService?.removeListener(_onSyncUpdate);
     _searchController.dispose();
     super.dispose();
+  }
+
+  void _onSyncUpdate() {
+    _loadSpecies();
   }
 
   Future<void> _loadSpecies() async {

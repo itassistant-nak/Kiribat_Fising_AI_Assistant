@@ -226,4 +226,44 @@ class SamSegmentationTest extends TestCase
         $this->assertSame('Meta SAM 3.1 (Meta Model API)', $catch->ai_metadata['provider']);
         $this->assertSame($this->grammarLine(), $catch->ai_metadata['raw_output']);
     }
+
+    public function test_segment_maps_rate_limited(): void
+    {
+        config(['services.meta_ai.api_key' => 'test-sam-key']);
+        Http::fake([
+            'https://api.meta.ai/*' => Http::response([
+                'error' => ['message' => 'Rate limit exceeded for sam-3.1'],
+            ], 429),
+        ]);
+        $service = new SamSegmentationService('https://api.meta.ai/v1', 'sam-3.1', 'test-sam-key', 5);
+
+        $result = $service->segment('data:image/jpeg;base64,AAAA');
+
+        $this->assertSame('rate_limited', $result['status']);
+        $this->assertSame(429, $result['http_status']);
+        $this->assertStringContainsString('Rate limit exceeded', (string) $result['error']);
+    }
+
+    public function test_segment_terminates_on_done_event_without_losing_output(): void
+    {
+        $grammar = $this->grammarLine();
+        $sseWithExtra = "data: {\"type\":\"response.output_text.delta\",\"delta\":\"" . addslashes($grammar) . "\"}\n\n"
+            . "data: [DONE]\n\n"
+            . "data: {\"type\":\"response.output_text.delta\",\"delta\":\"EXTRA_IGNORED\"}\n\n";
+
+        config(['services.meta_ai.api_key' => 'test-sam-key']);
+        Http::fake([
+            'https://api.meta.ai/*' => Http::response($sseWithExtra, 200, [
+                'Content-Type' => 'text/event-stream',
+            ]),
+        ]);
+        $service = new SamSegmentationService('https://api.meta.ai/v1', 'sam-3.1', 'test-sam-key', 5);
+
+        $result = $service->segment('data:image/jpeg;base64,AAAA');
+
+        $this->assertSame('ok', $result['status']);
+        $this->assertSame($grammar, $result['raw_output']);
+        $this->assertStringNotContainsString('EXTRA_IGNORED', (string) $result['raw_output']);
+    }
 }
+

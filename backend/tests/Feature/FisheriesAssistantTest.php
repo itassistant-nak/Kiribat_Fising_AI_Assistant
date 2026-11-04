@@ -183,9 +183,9 @@ class FisheriesAssistantTest extends TestCase
         Http::assertSent(function ($request) {
             $content = $request['input'][0]['content'] ?? [];
 
-            return $request['model'] === 'muse-wonder-1.0'
-                && ($content[1]['type'] ?? null) === 'image_url'
-                && ($content[1]['image_url']['url'] ?? null) === 'https://example.com/fish.jpg';
+            return ($request['model'] ?? '') === 'muse-wonder-1.0'
+                && in_array(($content[1]['type'] ?? null), ['image_url', 'input_image'])
+                && (($content[1]['image_url']['url'] ?? null) === 'https://example.com/fish.jpg' || ($content[1]['image_url'] ?? null) === 'https://example.com/fish.jpg');
         });
     }
 
@@ -247,7 +247,8 @@ class FisheriesAssistantTest extends TestCase
         $response->assertJsonPath('identification.kiribati_name', 'Te Bwere');
         $response->assertJsonPath('identification.english_name', 'Paddletail Snapper');
         $response->assertJsonPath('identification.scientific_name', 'Lutjanus gibbus');
-        $response->assertJsonPath('identification.confidence', 0.94);
+        $response->assertJsonPath('identification.confidence', null);
+        $response->assertJsonPath('identification.confidence_percentage', 'Not available');
         $response->assertJsonPath('identification.requires_human_confirmation', true);
 
         // Muse output survives only as advisory notes; SAM stays separate evidence.

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useEffect } from 'react';
-import { api, Species, AiIdentificationResponse, AiIdentificationResult } from '../lib/api';
+import { api, Species, AiIdentificationResponse, AiIdentificationResult, resolvePhotoUrl } from '../lib/api';
 import {
   Sparkles,
   Upload,
@@ -16,6 +16,8 @@ import {
   RefreshCw,
   Sliders,
   Check,
+  Database,
+  Globe,
 } from 'lucide-react';
 
 interface AiFishIdentifierModalProps {
@@ -69,9 +71,15 @@ export default function AiFishIdentifierModal({
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string>('');
   const [activeHint, setActiveHint] = useState<string>('');
 
-  // AI Inference State
+  // AI Inference & Provider State
+  const [selectedAiProvider, setSelectedAiProvider] = useState<'compare' | 'muse_glimmer' | 'openai'>('compare');
   const [analyzing, setAnalyzing] = useState<boolean>(false);
   const [aiResult, setAiResult] = useState<AiIdentificationResult | null>(null);
+  const [comparisonData, setComparisonData] = useState<{
+    status?: string;
+    providers?: any;
+    comparison?: any;
+  } | null>(null);
   const [aiError, setAiError] = useState<string | null>(null);
 
   // Human Admin Confirmation Fields
@@ -101,10 +109,11 @@ export default function AiFishIdentifierModal({
       setImagePreviewUrl(objectUrl);
       setActiveHint('');
       setAiResult(null);
+      setComparisonData(null);
       setAiError(null);
       setIsSuccess(false);
 
-      // Trigger automatic AI analysis
+      // Trigger automatic AI analysis with currently selected provider
       runAiIdentification({ image: file });
     }
   };
@@ -115,21 +124,39 @@ export default function AiFishIdentifierModal({
     setImagePreviewUrl(sample.url);
     setActiveHint(sample.hint);
     setAiResult(null);
+    setComparisonData(null);
     setAiError(null);
     setIsSuccess(false);
 
-    // Trigger AI analysis with sample
+    // Trigger AI analysis with sample using selected provider
     runAiIdentification({ image_url: sample.url, hint: sample.hint });
   };
 
   // Run AI Vision Analysis
-  const runAiIdentification = async (params: { image?: File | string; image_url?: string; hint?: string }) => {
+  const runAiIdentification = async (
+    params: { image?: File | string; image_url?: string; hint?: string },
+    providerOverride?: 'compare' | 'muse_glimmer' | 'openai'
+  ) => {
     setAnalyzing(true);
     setAiError(null);
+    const providerToUse = providerOverride || selectedAiProvider;
     try {
-      const res = await api.identifyFish(params);
+      const res = await api.identifyFish({
+        ...params,
+        provider: providerToUse,
+      });
       const ident = res.identification;
       setAiResult(ident);
+
+      if (res.comparison_status || res.providers) {
+        setComparisonData({
+          status: res.comparison_status,
+          providers: res.providers,
+          comparison: res.comparison,
+        });
+      } else {
+        setComparisonData(null);
+      }
 
       // Pre-fill Admin verification fields with AI suggestions
       setEnglishName(ident.english_name);
@@ -144,12 +171,39 @@ export default function AiFishIdentifierModal({
     }
   };
 
+  // Handle user changing the active AI vision provider
+  const handleSelectProvider = (prov: 'compare' | 'muse_glimmer' | 'openai') => {
+    setSelectedAiProvider(prov);
+    if (selectedFile) {
+      runAiIdentification({ image: selectedFile, hint: activeHint }, prov);
+    } else if (imagePreviewUrl) {
+      runAiIdentification({ image_url: imagePreviewUrl, hint: activeHint }, prov);
+    }
+  };
+
+  // Apply suggestion from a specific provider card
+  const handleApplyProviderSuggestion = (providerData: any) => {
+    if (!providerData) return;
+    const suggested = providerData.suggested_species || {};
+    const kName = suggested.kiribati_name || '';
+    const eName = suggested.common_name || '';
+    const sName = providerData.scientific_name || '';
+    const risk = suggested.ciguatera_risk || 'low';
+
+    if (kName) setKiribatiName(kName);
+    if (eName) setEnglishName(eName);
+    if (sName) setScientificName(sName);
+    if (['low', 'medium', 'high', 'extreme'].includes(risk)) {
+      setCiguateraRisk(risk);
+    }
+  };
+
   // Prepopulate and trigger AI identification if initialSpecies was passed
   useEffect(() => {
     if (isOpen) {
       if (initialSpecies) {
         setSelectedFile(null);
-        setImagePreviewUrl(initialSpecies.photo_url || '');
+        setImagePreviewUrl(resolvePhotoUrl(initialSpecies.photo_url) || '');
         setActiveHint(initialSpecies.kiribati_name);
         setEnglishName(initialSpecies.english_name || '');
         setKiribatiName(initialSpecies.kiribati_name || '');
@@ -350,6 +404,59 @@ export default function AiFishIdentifierModal({
                 </div>
               )}
 
+              {/* AI Vision Provider Selector */}
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-3.5 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5 uppercase tracking-wider">
+                    <Sliders className="w-3.5 h-3.5 text-indigo-600" />
+                    Select AI Vision Engine
+                  </label>
+                  <span className="text-[11px] font-medium text-slate-500">
+                    {selectedAiProvider === 'compare' && '⚖️ Parallel Comparison (Dual Evaluation)'}
+                    {selectedAiProvider === 'muse_glimmer' && '🔮 Meta Muse Glimmer Vision'}
+                    {selectedAiProvider === 'openai' && '⚡ OpenAI Vision (GPT-4o)'}
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleSelectProvider('compare')}
+                    className={`px-3 py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 border transition ${
+                      selectedAiProvider === 'compare'
+                        ? 'bg-indigo-600 text-white border-indigo-600 shadow-xs ring-2 ring-indigo-200'
+                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                    }`}
+                  >
+                    <span>⚖️</span>
+                    <span>Compare Both</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSelectProvider('muse_glimmer')}
+                    className={`px-3 py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 border transition ${
+                      selectedAiProvider === 'muse_glimmer'
+                        ? 'bg-purple-600 text-white border-purple-600 shadow-xs ring-2 ring-purple-200'
+                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                    }`}
+                  >
+                    <span>🔮</span>
+                    <span>Meta Muse Glimmer</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSelectProvider('openai')}
+                    className={`px-3 py-2 rounded-lg text-xs font-bold flex items-center justify-center gap-1.5 border transition ${
+                      selectedAiProvider === 'openai'
+                        ? 'bg-teal-600 text-white border-teal-600 shadow-xs ring-2 ring-teal-200'
+                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
+                    }`}
+                  >
+                    <span>⚡</span>
+                    <span>OpenAI (GPT-4o)</span>
+                  </button>
+                </div>
+              </div>
+
               {/* 1. Image Upload Section */}
               <div className="space-y-2">
                 <label className="block text-xs font-bold text-slate-800 uppercase tracking-wider">
@@ -426,28 +533,327 @@ export default function AiFishIdentifierModal({
 
               {/* 2. AI Identification Result Banner */}
               {analyzing && (
-                <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 flex items-center gap-3">
-                  <RefreshCw className="w-5 h-5 text-indigo-600 animate-spin flex-shrink-0" />
-                  <div className="text-xs text-indigo-900">
-                    <span className="font-bold block">Running Meta AI Vision Identification...</span>
-                    Analyzing caudal fin shape, scale patterns, and Kiribati marine morphological features.
+                <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-4 space-y-2">
+                  <div className="flex items-center gap-3">
+                    <RefreshCw className="w-5 h-5 text-indigo-600 animate-spin flex-shrink-0" />
+                    <div className="text-xs text-indigo-900">
+                      <span className="font-bold block">Running 4-Stage AI Vision Pipeline...</span>
+                      DB photos → morphological traits → global web vision → OpenAI Vision fallback.
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-4 gap-1.5 pt-2 border-t border-indigo-100 text-[10px]">
+                    <div className="flex items-center gap-1.5 text-indigo-700 bg-white/70 px-2 py-1 rounded">
+                      <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse"></span>
+                      <span>1. DB Photos</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-indigo-700 bg-white/70 px-2 py-1 rounded">
+                      <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse"></span>
+                      <span>2. Traits</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-indigo-700 bg-white/70 px-2 py-1 rounded">
+                      <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-pulse"></span>
+                      <span>3. Web Vision</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-teal-700 bg-white/70 px-2 py-1 rounded">
+                      <span className="w-1.5 h-1.5 rounded-full bg-teal-500 animate-pulse"></span>
+                      <span>4. OpenAI</span>
+                    </div>
                   </div>
                 </div>
               )}
 
+
               {aiResult && !analyzing && (
                 <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
+                  {/* Provider Comparison View (when compare mode was selected or comparisonData returned) */}
+                  {comparisonData?.providers && (
+                    <div className="space-y-3 pb-3 border-b border-slate-200">
+                      {/* Comparison Status Banner */}
+                      <div className={`p-3 rounded-xl border text-xs flex items-start gap-2.5 ${
+                        comparisonData.status === 'agreement'
+                          ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                          : comparisonData.status === 'disagreement'
+                          ? 'bg-amber-50 border-amber-300 text-amber-900'
+                          : comparisonData.status === 'single_provider_result'
+                          ? 'bg-blue-50 border-blue-200 text-blue-900'
+                          : 'bg-slate-100 border-slate-300 text-slate-800'
+                      }`}>
+                        {comparisonData.status === 'agreement' ? (
+                          <ShieldCheck className="w-4 h-4 text-emerald-600 flex-shrink-0 mt-0.5" />
+                        ) : comparisonData.status === 'disagreement' ? (
+                          <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+                        ) : (
+                          <Sparkles className="w-4 h-4 text-indigo-600 flex-shrink-0 mt-0.5" />
+                        )}
+                        <div className="flex-1">
+                          <div className="font-bold flex items-center justify-between">
+                            <span>
+                              {comparisonData.status === 'agreement' && '✓ Models Agree on Species Identification'}
+                              {comparisonData.status === 'disagreement' && '⚠️ Model Conflict — Human Verification Required'}
+                              {comparisonData.status === 'single_provider_result' && 'ℹ️ Single Provider Succeeded'}
+                              {comparisonData.status === 'both_failed' && '❌ Both Providers Failed'}
+                              {comparisonData.status === 'insufficient_evidence' && '⚠️ Insufficient Evidence from Providers'}
+                            </span>
+                            <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-white/70 border border-black/10">
+                              {comparisonData.status}
+                            </span>
+                          </div>
+                          <p className="text-[11px] mt-0.5 opacity-90">
+                            {comparisonData.status === 'agreement' && 'Both Meta Muse Glimmer and OpenAI Vision identified the same species. Review suggestions below.'}
+                            {comparisonData.status === 'disagreement' && 'The AI models suggest different species. Review both analyses below and choose the correct suggestion, or enter ground truth manually.'}
+                            {comparisonData.status === 'single_provider_result' && 'One model succeeded while the other encountered an issue or timeout.'}
+                            {comparisonData.comparison?.warning_message && ` ${comparisonData.comparison.warning_message}`}
+                          </p>
+
+                          {/* Shared Features between models */}
+                          {comparisonData.comparison?.shared_features && comparisonData.comparison.shared_features.length > 0 && (
+                            <div className="mt-2 pt-2 border-t border-black/10 flex items-center gap-1.5 flex-wrap">
+                              <span className="text-[10px] font-bold">Observed by both models:</span>
+                              {comparisonData.comparison.shared_features.map((feat: string, idx: number) => (
+                                <span key={idx} className="text-[10px] px-1.5 py-0.5 bg-white rounded border border-black/10 font-medium">
+                                  {feat}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Dual Provider Cards Grid */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {/* Meta Muse Glimmer Card */}
+                        {comparisonData.providers.muse_glimmer && (
+                          <div className={`p-3 rounded-xl border flex flex-col justify-between transition ${
+                            comparisonData.providers.muse_glimmer.status === 'success'
+                              ? 'bg-purple-50/50 border-purple-200'
+                              : 'bg-slate-50 border-slate-200 opacity-60'
+                          }`}>
+                            <div className="space-y-2">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-sm">🔮</span>
+                                  <span className="text-xs font-bold text-purple-900">Meta Muse Glimmer</span>
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                  {comparisonData.providers.muse_glimmer.duration_ms > 0 && (
+                                    <span className="text-[10px] font-mono text-purple-700 bg-purple-100 px-1.5 py-0.5 rounded">
+                                      {comparisonData.providers.muse_glimmer.duration_ms}ms
+                                    </span>
+                                  )}
+                                  <span className="text-[11px] font-bold font-mono text-purple-800 bg-purple-100 px-2 py-0.5 rounded-full">
+                                    {((comparisonData.providers.muse_glimmer.confidence || 0) * 100).toFixed(0)}%
+                                  </span>
+                                </div>
+                              </div>
+
+                              {comparisonData.providers.muse_glimmer.status === 'success' ? (
+                                <>
+                                  <div>
+                                    <div className="text-sm font-bold text-slate-900">
+                                      {comparisonData.providers.muse_glimmer.suggested_species?.kiribati_name || 'Unknown'}
+                                    </div>
+                                    <div className="text-xs text-slate-600 font-medium">
+                                      {comparisonData.providers.muse_glimmer.suggested_species?.common_name || ''}
+                                    </div>
+                                    <div className="text-[11px] italic text-slate-400 font-serif">
+                                      {comparisonData.providers.muse_glimmer.scientific_name}
+                                    </div>
+                                  </div>
+
+                                  {comparisonData.providers.muse_glimmer.reasoning && (
+                                    <p className="text-[11px] text-purple-950 bg-white/70 p-2 rounded-lg border border-purple-100">
+                                      <span className="font-semibold text-purple-900">Reasoning: </span>
+                                      {comparisonData.providers.muse_glimmer.reasoning}
+                                    </p>
+                                  )}
+
+                                  {comparisonData.providers.muse_glimmer.visible_features?.length > 0 && (
+                                    <div className="text-[10px] text-slate-600">
+                                      <span className="font-semibold text-purple-900">Visible traits: </span>
+                                      {comparisonData.providers.muse_glimmer.visible_features.slice(0, 3).join(', ')}
+                                    </div>
+                                  )}
+                                </>
+                              ) : (
+                                <div className="text-xs text-slate-500 italic py-2">
+                                  Provider unconfigured or unavailable: {comparisonData.providers.muse_glimmer.error || 'Failed'}
+                                </div>
+                              )}
+                            </div>
+
+                            {comparisonData.providers.muse_glimmer.status === 'success' && (
+                              <button
+                                type="button"
+                                onClick={() => handleApplyProviderSuggestion(comparisonData.providers.muse_glimmer)}
+                                className="mt-3 w-full py-1.5 px-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-bold transition flex items-center justify-center gap-1 shadow-xs"
+                              >
+                                <span>Use Meta Suggestion</span>
+                              </button>
+                            )}
+                          </div>
+                        )}
+
+                        {/* OpenAI Vision Card */}
+                        {comparisonData.providers.openai && (
+                          <div className={`p-3 rounded-xl border flex flex-col justify-between transition ${
+                            comparisonData.providers.openai.status === 'success'
+                              ? 'bg-teal-50/50 border-teal-200'
+                              : 'bg-slate-50 border-slate-200 opacity-60'
+                          }`}>
+                            <div className="space-y-2">
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-sm">⚡</span>
+                                  <span className="text-xs font-bold text-teal-900">OpenAI Vision (GPT-4o)</span>
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                  {comparisonData.providers.openai.duration_ms > 0 && (
+                                    <span className="text-[10px] font-mono text-teal-700 bg-teal-100 px-1.5 py-0.5 rounded">
+                                      {comparisonData.providers.openai.duration_ms}ms
+                                    </span>
+                                  )}
+                                  <span className="text-[11px] font-bold font-mono text-teal-800 bg-teal-100 px-2 py-0.5 rounded-full">
+                                    {((comparisonData.providers.openai.confidence || 0) * 100).toFixed(0)}%
+                                  </span>
+                                </div>
+                              </div>
+
+                              {comparisonData.providers.openai.status === 'success' ? (
+                                <>
+                                  <div>
+                                    <div className="text-sm font-bold text-slate-900">
+                                      {comparisonData.providers.openai.suggested_species?.kiribati_name || 'Unknown'}
+                                    </div>
+                                    <div className="text-xs text-slate-600 font-medium">
+                                      {comparisonData.providers.openai.suggested_species?.common_name || ''}
+                                    </div>
+                                    <div className="text-[11px] italic text-slate-400 font-serif">
+                                      {comparisonData.providers.openai.scientific_name}
+                                    </div>
+                                  </div>
+
+                                  {comparisonData.providers.openai.reasoning && (
+                                    <p className="text-[11px] text-teal-950 bg-white/70 p-2 rounded-lg border border-teal-100">
+                                      <span className="font-semibold text-teal-900">Reasoning: </span>
+                                      {comparisonData.providers.openai.reasoning}
+                                    </p>
+                                  )}
+
+                                  {comparisonData.providers.openai.visible_features?.length > 0 && (
+                                    <div className="text-[10px] text-slate-600">
+                                      <span className="font-semibold text-teal-900">Visible traits: </span>
+                                      {comparisonData.providers.openai.visible_features.slice(0, 3).join(', ')}
+                                    </div>
+                                  )}
+                                </>
+                              ) : (
+                                <div className="text-xs text-slate-500 italic py-2">
+                                  Provider unconfigured or unavailable: {comparisonData.providers.openai.error || 'Failed'}
+                                </div>
+                              )}
+                            </div>
+
+                            {comparisonData.providers.openai.status === 'success' && (
+                              <button
+                                type="button"
+                                onClick={() => handleApplyProviderSuggestion(comparisonData.providers.openai)}
+                                className="mt-3 w-full py-1.5 px-2 bg-teal-600 hover:bg-teal-700 text-white rounded-lg text-xs font-bold transition flex items-center justify-center gap-1 shadow-xs"
+                              >
+                                <span>Use OpenAI Suggestion</span>
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
                   <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <Sparkles className="w-4 h-4 text-indigo-600 flex-shrink-0" />
                       <span className="text-xs font-bold uppercase tracking-wider text-slate-800">
-                        Meta AI Vision Suggestion:
+                        {comparisonData?.providers ? 'Primary / Active Suggestion:' : 'AI Vision Suggestion:'}
                       </span>
+                      {selectedAiProvider === 'muse_glimmer' ? (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-700 border border-purple-200">
+                          🔮 Meta Muse Glimmer Vision
+                        </span>
+                      ) : selectedAiProvider === 'openai' ? (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-teal-100 text-teal-800 border border-teal-200">
+                          ⚡ OpenAI Vision (GPT-4o)
+                        </span>
+                      ) : (aiResult.pipeline_stage === 'db_image_match' || aiResult.source === 'db_image_match') ? (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 flex items-center gap-1">
+                          <Database className="w-3 h-3 text-emerald-600" />
+                          Stage 1: DB Photo Match
+                        </span>
+                      ) : (aiResult.pipeline_stage === 'morphological_match' || aiResult.source === 'morphological_match') ? (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-100 text-blue-800 border border-blue-200 flex items-center gap-1">
+                          <Sparkles className="w-3 h-3 text-blue-600" />
+                          Stage 2: Morphological Traits Match
+                        </span>
+                      ) : (aiResult.pipeline_stage === 'web_vision' || aiResult.source === 'web_vision') ? (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-800 border border-purple-200 flex items-center gap-1">
+                          <Globe className="w-3 h-3 text-purple-600" />
+                          Stage 3: Web & Global Vision
+                        </span>
+                      ) : (aiResult.pipeline_stage === 'openai_vision' || aiResult.source === 'openai_vision') ? (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-teal-100 text-teal-800 border border-teal-200 flex items-center gap-1">
+                          <Sparkles className="w-3 h-3 text-teal-600" />
+                          Stage 4: OpenAI Vision ({aiResult.openai_model?.model ?? 'gpt-4o'})
+                        </span>
+                      ) : aiResult.model?.includes('Muse Glimmer') ? (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-700 border border-purple-200">
+                          ✨ Meta Muse Glimmer Vision
+                        </span>
+                      ) : (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 text-slate-600 border border-slate-200">
+                          Morphological Knowledge Base
+                        </span>
+                      )}
                     </div>
                     <span className="px-2 py-0.5 rounded-full text-[11px] font-mono font-bold bg-indigo-100 text-indigo-700">
                       {(aiResult.confidence * 100).toFixed(0)}% Confidence
                     </span>
                   </div>
+
+                  {/* 4-Stage Pipeline Progression Audit Bar */}
+                  {aiResult.pipeline?.stages && (
+                    <div className="flex items-center gap-1.5 text-[10px] bg-slate-100 p-2 rounded-lg border border-slate-200 overflow-x-auto">
+                      <span className="font-semibold text-slate-600 flex-shrink-0">Pipeline:</span>
+                      <span className={`px-2 py-0.5 rounded flex-shrink-0 ${
+                        aiResult.pipeline.stages.db_image_match?.status === 'completed'
+                          ? 'bg-emerald-100 text-emerald-800 font-bold border border-emerald-300'
+                          : (aiResult.pipeline.stages.db_image_match?.attempted ? 'bg-slate-200 text-slate-500' : 'text-slate-400')
+                      }`}>
+                        1. DB Photos {aiResult.pipeline.stages.db_image_match?.status === 'completed' ? '✓' : ''}
+                      </span>
+                      <span className="text-slate-400">→</span>
+                      <span className={`px-2 py-0.5 rounded flex-shrink-0 ${
+                        aiResult.pipeline.stages.morphological_match?.status === 'completed'
+                          ? 'bg-blue-100 text-blue-800 font-bold border border-blue-300'
+                          : (aiResult.pipeline.stages.morphological_match?.attempted ? 'bg-slate-200 text-slate-500' : 'text-slate-400')
+                      }`}>
+                        2. Traits {aiResult.pipeline.stages.morphological_match?.status === 'completed' ? '✓' : ''}
+                      </span>
+                      <span className="text-slate-400">→</span>
+                      <span className={`px-2 py-0.5 rounded flex-shrink-0 ${
+                        aiResult.pipeline.stages.web_vision?.status === 'completed'
+                          ? 'bg-purple-100 text-purple-800 font-bold border border-purple-300'
+                          : (aiResult.pipeline.stages.web_vision?.attempted ? 'bg-slate-200 text-slate-500' : 'text-slate-400')
+                      }`}>
+                        3. Web Vision {aiResult.pipeline.stages.web_vision?.status === 'completed' ? '✓' : ''}
+                      </span>
+                      <span className="text-slate-400">→</span>
+                      <span className={`px-2 py-0.5 rounded flex-shrink-0 ${
+                        aiResult.pipeline.stages.openai_vision?.status === 'completed'
+                          ? 'bg-teal-100 text-teal-800 font-bold border border-teal-300'
+                          : (aiResult.pipeline.stages.openai_vision?.attempted ? 'bg-slate-200 text-slate-500' : 'text-slate-400')
+                      }`}>
+                        4. OpenAI {aiResult.pipeline.stages.openai_vision?.status === 'completed' ? '✓' : ''}
+                      </span>
+                    </div>
+                  )}
 
                   <div className="bg-white p-3 rounded-lg border border-slate-200">
                     <div className="flex items-baseline gap-2">
@@ -471,6 +877,20 @@ export default function AiFishIdentifierModal({
                         ))}
                       </ul>
                     </div>
+
+                    {aiResult.meta_model?.glimmer_vision?.reasoning && (
+                      <div className="mt-2 text-[11px] text-purple-800 bg-purple-50 p-2 rounded border border-purple-100">
+                        <span className="font-semibold text-purple-900">Muse Glimmer Reasoning: </span>
+                        {aiResult.meta_model.glimmer_vision.reasoning}
+                      </div>
+                    )}
+
+                    {aiResult.openai_model?.reasoning && (
+                      <div className="mt-2 text-[11px] text-teal-800 bg-teal-50 p-2 rounded border border-teal-100">
+                        <span className="font-semibold text-teal-900">OpenAI Vision Reasoning: </span>
+                        {aiResult.openai_model.reasoning}
+                      </div>
+                    )}
 
                     {aiResult.ciguatera_warning && (
                       <div className="mt-2 p-2 rounded bg-amber-50 border border-amber-200 text-[11px] text-amber-900 flex items-start gap-1.5">

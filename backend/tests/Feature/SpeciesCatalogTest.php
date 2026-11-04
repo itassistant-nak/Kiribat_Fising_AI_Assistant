@@ -211,4 +211,38 @@ class SpeciesCatalogTest extends TestCase
         $aiRes->assertStatus(200);
         $this->assertNotEmpty($aiRes->json('identification.visual_features'));
     }
+
+    public function test_admin_can_update_species_with_large_base64_photo_url()
+    {
+        $admin = User::where('role', 'admin')->first();
+        $species = Species::where('kiribati_name', 'Te Kuau')->first();
+
+        // 75 KB of dummy binary data encoded in base64 (approx 100 KB string)
+        // This easily exceeds the 64 KB MySQL TEXT column limit.
+        $binaryData = str_repeat("JPEG_SAMPLE_IMAGE_DATA_BYTES", 2500);
+        $base64Url = 'data:image/jpeg;base64,' . base64_encode($binaryData);
+
+        $response = $this->actingAs($admin, 'sanctum')->putJson("/api/species/{$species->id}", [
+            'photo_url' => $base64Url,
+        ]);
+
+        $response->assertStatus(200);
+
+        // Verify photo_url was converted to a saved file URL
+        $savedUrl = $response->json('species.photo_url');
+        $this->assertNotNull($savedUrl);
+        $this->assertStringStartsWith('/uploads/species/species_', $savedUrl);
+        $this->assertStringEndsWith('.jpg', $savedUrl);
+
+        // Verify the file was written to disk
+        $filePath = public_path(ltrim($savedUrl, '/'));
+        $this->assertFileExists($filePath);
+        $this->assertEquals($binaryData, file_get_contents($filePath));
+
+        // Clean up test file
+        if (file_exists($filePath)) {
+            unlink($filePath);
+        }
+    }
 }
+

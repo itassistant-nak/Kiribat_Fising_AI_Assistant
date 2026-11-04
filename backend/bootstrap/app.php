@@ -17,6 +17,12 @@ return Application::configure(basePath: dirname(__DIR__))
         $middleware->append(\Illuminate\Http\Middleware\HandleCors::class);
     })
     ->withExceptions(function (Exceptions $exceptions) {
+        $exceptions->render(function (\Symfony\Component\HttpKernel\Exception\MethodNotAllowedHttpException $e, $request) {
+            return response()->json([
+                'message' => 'The ' . $request->method() . ' method is not supported for route ' . $request->path() . '. Supported methods: ' . implode(', ', $e->getHeaders()['Allow'] ?? ['POST']) . '.',
+                'status' => 'error',
+            ], 405);
+        });
         $exceptions->render(function (\Illuminate\Auth\AuthenticationException $e, $request) {
             return response()->json(['message' => 'Unauthenticated.'], 401);
         });

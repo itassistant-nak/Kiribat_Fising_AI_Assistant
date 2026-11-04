@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useMemo, useEffect } from 'react';
-import { Species, api } from '../lib/api';
+import { Species, api, resolvePhotoUrl } from '../lib/api';
 import {
   Fish,
   Sparkles,
@@ -348,7 +348,7 @@ export default function SpeciesCatalog({
                 <div className="relative h-48 bg-slate-100 overflow-hidden">
                   {species.photo_url ? (
                     <img
-                      src={species.photo_url}
+                      src={resolvePhotoUrl(species.photo_url) ?? species.photo_url}
                       alt={species.english_name}
                       className="w-full h-full object-cover group-hover:scale-105 transition duration-300"
                     />
@@ -632,7 +632,7 @@ export default function SpeciesCatalog({
                       >
                         {species.photo_url ? (
                           <img
-                            src={species.photo_url}
+                            src={resolvePhotoUrl(species.photo_url) ?? species.photo_url}
                             alt={species.english_name}
                             className="w-full h-full object-cover group-hover/thumb:scale-110 transition duration-200"
                           />

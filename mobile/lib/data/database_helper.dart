@@ -19,6 +19,12 @@ class DatabaseHelper {
     _database = db;
   }
 
+  void setDatabaseForTesting(Database? db) {
+    _database = db;
+  }
+
+  Future<void> createDbForTesting(Database db, int version) => _createDB(db, version);
+
   Future<Database> get database async {
     if (_database != null) return _database!;
     initializeFfi();

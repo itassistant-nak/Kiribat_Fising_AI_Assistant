@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { CatchRecord } from '../lib/api';
+import { CatchRecord, resolvePhotoUrl } from '../lib/api';
 import { Sparkles, CheckCircle2, Clock, AlertTriangle, MapPin, Edit3, Image as ImageIcon, Camera, Ban } from 'lucide-react';
 
 interface CatchTableProps {
@@ -95,7 +95,7 @@ export default function CatchTable({
                       >
                         {c.photo_url ? (
                           <img
-                            src={c.photo_url}
+                            src={resolvePhotoUrl(c.photo_url) ?? c.photo_url}
                             alt={c.ai_species_suggestion || 'Fish catch'}
                             className="w-full h-full object-cover group-hover/photo:scale-105 transition"
                           />

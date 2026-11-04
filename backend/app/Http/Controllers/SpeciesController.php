@@ -112,6 +112,8 @@ class SpeciesController extends Controller
             'notes' => 'nullable|string',
         ]);
 
+        $photoUrl = $this->processPhotoUrl($request->photo_url, \Illuminate\Support\Str::slug($request->kiribati_name ?: 'new'));
+
         $species = Species::firstOrCreate(
             ['kiribati_name' => $request->kiribati_name],
             [
@@ -121,13 +123,13 @@ class SpeciesController extends Controller
                 'ciguatera_risk' => $request->ciguatera_risk ?? 'low',
                 'verification_status' => $request->verification_status ?? 'needs_review',
                 'record_type' => $request->record_type ?? 'species',
-                'photo_url' => $request->photo_url,
+                'photo_url' => $photoUrl,
                 'notes' => $request->notes,
             ]
         );
 
-        if (!$species->wasRecentlyCreated && $request->filled('photo_url') && !$species->photo_url) {
-            $species->update(['photo_url' => $request->photo_url]);
+        if (!$species->wasRecentlyCreated && $photoUrl && !$species->photo_url) {
+            $species->update(['photo_url' => $photoUrl]);
         }
 
         return response()->json([
@@ -157,6 +159,10 @@ class SpeciesController extends Controller
             'visual_features' => 'nullable|array',
             'visual_features.*' => 'string',
         ]);
+
+        if (isset($validated['photo_url'])) {
+            $validated['photo_url'] = $this->processPhotoUrl($validated['photo_url'], (string)$species->id);
+        }
 
         $species->update(collect($validated)->toArray());
 
@@ -198,4 +204,33 @@ class SpeciesController extends Controller
             'species' => $fresh,
         ]);
     }
+
+    /**
+     * Process photo_url: if it is a base64 data URL, decode and store as an image file.
+     */
+    protected function processPhotoUrl(?string $photoUrl, string $identifier = 'species'): ?string
+    {
+        if (empty($photoUrl)) {
+            return $photoUrl;
+        }
+
+        if (preg_match('/^data:image\/(\w+);base64,/i', $photoUrl, $matches)) {
+            $ext = strtolower($matches[1]) === 'jpeg' ? 'jpg' : strtolower($matches[1]);
+            $base64Data = substr($photoUrl, strpos($photoUrl, ',') + 1);
+            $decoded = base64_decode($base64Data);
+
+            if ($decoded !== false) {
+                $dir = public_path('uploads/species');
+                if (!file_exists($dir)) {
+                    mkdir($dir, 0755, true);
+                }
+                $filename = 'species_' . $identifier . '_' . time() . '_' . \Illuminate\Support\Str::random(8) . '.' . $ext;
+                file_put_contents($dir . '/' . $filename, $decoded);
+                return '/uploads/species/' . $filename;
+            }
+        }
+
+        return $photoUrl;
+    }
 }
+

@@ -197,10 +197,29 @@ export default function DashboardPage() {
   // Auth Loading Screen
   if (authLoading) {
     return (
-      <div className="min-h-screen bg-slate-900 flex items-center justify-center">
-        <div className="text-center space-y-3">
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
+        <div className="text-center space-y-4 max-w-sm w-full bg-slate-800/90 p-6 rounded-2xl border border-slate-700 shadow-2xl">
           <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
-          <p className="text-slate-400 text-xs font-mono">Connecting to MFMRD secure portal...</p>
+          <div>
+            <h3 className="text-white text-sm font-bold">MFMRD Fisheries Portal</h3>
+            <p className="text-slate-400 text-xs font-mono mt-1">Connecting to MFMRD secure portal...</p>
+          </div>
+          <div className="pt-2 flex flex-col gap-2 border-t border-slate-700/60">
+            <button
+              type="button"
+              onClick={() => router.push('/login')}
+              className="w-full py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition shadow-sm"
+            >
+              Go to Login Screen
+            </button>
+            <button
+              type="button"
+              onClick={() => quickLogin('admin')}
+              className="w-full py-2 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-xl text-xs font-medium border border-slate-600 transition"
+            >
+              Sign In as Admin (admin@fisheries.gov.ki)
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -208,7 +227,35 @@ export default function DashboardPage() {
 
   // Not signed in (will be redirected by router)
   if (!user) {
-    return null;
+    return (
+      <div className="min-h-screen bg-slate-900 flex items-center justify-center p-4">
+        <div className="text-center space-y-4 max-w-sm w-full bg-slate-800/90 p-6 rounded-2xl border border-slate-700 shadow-2xl">
+          <div className="w-10 h-10 rounded-full bg-amber-500/20 text-amber-400 flex items-center justify-center mx-auto">
+            <Lock className="w-5 h-5" />
+          </div>
+          <div>
+            <h3 className="text-white text-sm font-bold">Authentication Required</h3>
+            <p className="text-slate-400 text-xs mt-1">Please sign in to access the MFMRD portal.</p>
+          </div>
+          <div className="pt-2 flex flex-col gap-2">
+            <button
+              type="button"
+              onClick={() => router.push('/login')}
+              className="w-full py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition shadow-sm"
+            >
+              Go to Login Screen
+            </button>
+            <button
+              type="button"
+              onClick={() => quickLogin('admin')}
+              className="w-full py-2 bg-slate-700 hover:bg-slate-600 text-slate-200 rounded-xl text-xs font-medium border border-slate-600 transition"
+            >
+              Sign In as Admin
+            </button>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   // Acceptance Test 2: Non-administrators cannot access restricted pages

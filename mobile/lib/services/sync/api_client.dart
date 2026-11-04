@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import 'multipart_photo.dart';
@@ -12,9 +13,22 @@ class ApiClient {
   final http.Client _client;
 
   ApiClient({
-    this.baseUrl = 'http://127.0.0.1:8000',
+    String? baseUrl,
     http.Client? client,
-  }) : _client = client ?? http.Client();
+  })  : baseUrl = baseUrl ?? defaultBaseUrl(),
+        _client = client ?? http.Client();
+
+  static String defaultBaseUrl() {
+    if (kIsWeb) {
+      try {
+        final host = Uri.base.host;
+        if (host.isNotEmpty && (host == 'localhost' || host == '127.0.0.1')) {
+          return 'http://$host:8000';
+        }
+      } catch (_) {}
+    }
+    return 'http://127.0.0.1:8000';
+  }
 
   /// Check server health
   Future<bool> checkHealth() async {
@@ -237,11 +251,13 @@ class ApiClient {
     return jsonDecode(res.body) as Map<String, dynamic>;
   }
 
-  /// Invoke Meta AI Vision endpoint to identify a fish photograph
+  /// Invoke AI Vision endpoint to identify and compare a fish photograph
   Future<Map<String, dynamic>> identifyFish({
     String? imageUrl,
     String? hint,
     String? token,
+    bool compare = true,
+    String? provider,
   }) async {
     final uri = Uri.parse('$baseUrl/api/ai/identify-fish');
     final headers = {
@@ -253,6 +269,8 @@ class ApiClient {
     final payload = <String, dynamic>{};
     if (imageUrl != null) payload['image_url'] = imageUrl;
     if (hint != null) payload['hint'] = hint;
+    if (compare) payload['compare'] = true;
+    if (provider != null) payload['provider'] = provider;
     final body = jsonEncode(payload);
 
     final res = await _client

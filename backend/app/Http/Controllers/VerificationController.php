@@ -42,6 +42,20 @@ class VerificationController extends Controller
             $newPhotoUrl = url('uploads/catches/' . $filename);
         } elseif ($request->filled('photo_url')) {
             $newPhotoUrl = $request->input('photo_url');
+            if (preg_match('/^data:image\/(\w+);base64,/i', $newPhotoUrl, $matches)) {
+                $ext = strtolower($matches[1]) === 'jpeg' ? 'jpg' : strtolower($matches[1]);
+                $base64Data = substr($newPhotoUrl, strpos($newPhotoUrl, ',') + 1);
+                $decoded = base64_decode($base64Data);
+                if ($decoded !== false) {
+                    $dir = public_path('uploads/catches');
+                    if (!file_exists($dir)) {
+                        mkdir($dir, 0755, true);
+                    }
+                    $filename = 'catch_corrected_' . time() . '_' . \Illuminate\Support\Str::random(8) . '.' . $ext;
+                    file_put_contents($dir . '/' . $filename, $decoded);
+                    $newPhotoUrl = url('uploads/catches/' . $filename);
+                }
+            }
         }
 
         $imageChangedByAdmin = ($newPhotoUrl && $newPhotoUrl !== $originalPhotoUrl);

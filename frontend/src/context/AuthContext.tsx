@@ -23,28 +23,39 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [error, setError] = useState<string | null>(null);
 
   const initAuth = useCallback(async () => {
+    // Add a race condition safety timer so initAuth never blocks longer than 4.5 seconds
+    const timeoutPromise = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('Auth initialization timeout')), 4500)
+    );
+
     try {
-      const storedToken = typeof window !== 'undefined' ? localStorage.getItem('kiribati_auth_token') : null;
-      if (storedToken) {
-        setTokenState(storedToken);
-        const res = await api.getMe();
-        setUser(res.user);
-      } else {
-        // Default to Administrator
-        const res = await api.login('admin@fisheries.gov.ki', 'KiribatiAdmin2026!');
-        setUser(res.user);
-        setTokenState(res.token);
-      }
-    } catch {
-      try {
-        const res = await api.login('admin@fisheries.gov.ki', 'KiribatiAdmin2026!');
-        setUser(res.user);
-        setTokenState(res.token);
-      } catch {
-        setToken(null);
-        setUser(null);
-        setTokenState(null);
-      }
+      await Promise.race([
+        (async () => {
+          const storedToken = typeof window !== 'undefined' ? localStorage.getItem('kiribati_auth_token') : null;
+          if (storedToken) {
+            setTokenState(storedToken);
+            try {
+              const res = await api.getMe();
+              setUser(res.user);
+              return;
+            } catch {
+              // Token expired or invalid, purge from storage
+              setToken(null);
+              setTokenState(null);
+            }
+          }
+          // Default to Administrator
+          const res = await api.login('admin@fisheries.gov.ki', 'KiribatiAdmin2026!');
+          setUser(res.user);
+          setTokenState(res.token);
+        })(),
+        timeoutPromise,
+      ]);
+    } catch (err) {
+      console.warn('Auth initialization fallback:', err);
+      setToken(null);
+      setUser(null);
+      setTokenState(null);
     } finally {
       setLoading(false);
     }

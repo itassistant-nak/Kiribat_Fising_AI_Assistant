@@ -281,14 +281,177 @@
   4. Outbound Catches & GPS Breadcrumbs: Client UUIDs prevent duplicate submissions via server-side idempotency (`200 idempotent_replay`); route breadcrumbs synchronize as ordered polylines without re-billing AI models.
 - Consequences: Seamless transition between offline SQLite storage and MySQL online persistence; zero authentication failures; verified idempotency and zero duplicate catch records.
 
-## ADR template
-- ID/date:
-- Status: Proposed / Accepted / Superseded
-- Context:
+## ADR-022 — Fisherman Live GPS Map in Flutter Mobile App (accepted)
+- Status: Accepted (P1-07).
+- Context: Artisanal fishers operating in South Tarawa lagoon and outer atolls require visual geospatial awareness of their vessel's live location, distance to nearby fish poisoning advisory boundaries, and locations of recent catches and trip routes matching the Next.js administrator dashboard (`FisheriesMap.tsx`).
 - Decision:
-- Alternatives:
+  1. Interactive Map Engine: Integrated `flutter_map` (v8.3.2) and `latlong2` (v0.10.1) rendering OpenStreetMap tiles with resilient fallback and maritime lagoon styling.
+  2. Live Vessel Location Marker: Real-time vessel marker at current coordinates (`_currentLat`, `_currentLon`) with dynamic GPS accuracy radius circle and 3-tier safety status banner (🟢 Safe Waters / 🟡 Caution $\le 500$m to boundary / 🔴 Inside Active Poisoning Advisory Zone) driven by `ZoneAlertEngine`.
+  3. Advisory Zone Polygons: GeoJSON RFC 7946 polygons parsed from SQLite `advisory_zones` cache with color-coded boundaries (Red for authority-confirmed, Orange for suspected) and interactive bottom sheet displaying clinical hospital evidence, biohazard concerns, and high-risk species (*Te Okaoka*, *Te Bwere*).
+  4. Recorded Catch & Route Visualization: Markers for local and synced catches with verification status badges, and breadcrumb route polylines with START and RETURN markers.
+  5. Multi-Layer Toggles & Recenter: On-map action controls to toggle Advisories, Catches, and Routes, with 1-tap "Recenter on My Vessel".
+  6. Navigation Integration: Added dedicated "Live GPS Map" destination to the primary bottom navigation bar in `main.dart`, plus quick-launch action buttons from `RadarScreen` and `TripScreen`.
+- Consequences: Fishermen possess real-time visual geospatial safety awareness at sea, eliminating guesswork regarding boundary proximity; 100% offline-capable with local SQLite data; zero regressions on existing test suites.
+
+## ADR-023 — Meta Muse Glimmer Multimodal Vision Integration for Fish Species Identification (accepted)
+- Status: Accepted (P0-13, 2026-10-30).
+- Context: The prototype previously relied on `muse-wonder-1.0` (a text-only reasoning model) alongside a server-side morphological knowledge base heuristic for fish matching because Muse Wonder could not process image inputs directly (ADR-009, ADR-016, ADR-020). Meta's `muse-glimmer` (Muse Glimmer 30B) open-weight multimodal model features a perception encoder capable of processing image pixels and text simultaneously. The user requested integrating Muse Glimmer as the primary online classifier for fish species identification, grounded with the species available in the Laravel backend database.
+- Decision:
+  1. Primary Online Classifier: Integrated Meta Muse Glimmer (`muse-glimmer` via `MetaAiService::identifyFishVision`) as the primary online vision classifier in `POST /api/ai/identify-fish`. Muse Glimmer inspects image data URLs / URLs directly and outputs structured JSON containing vernacular Kiribati name, English name, scientific name, confidence, and observed visual morphology.
+  2. Grounding in Laravel Backend Species: The vision prompt injects the verified Kiribati marine species catalog from the database (`Species::class`) into the model's reference context, ensuring classification aligns with local taxonomy (*Te Bwere*, *Te Ingimea*, *Te Okaoka*, *Te Kuau*, *Te Atun*, *Te Ikari*, etc.).
+  3. Seamless Knowledge Base Fallback: If Muse Glimmer is unconfigured, times out, or errors (e.g. offline field usage), `AiIdentificationController` gracefully falls back to the deterministic Kiribati marine morphological knowledge base, ensuring zero downtime and 100% offline-readiness.
+  4. Preservation of Safety and Ground Truth (ADR-002): AI identifications remain strictly advisory suggestions (`requires_human_confirmation: true`). Disclaimers that photographs cannot detect ciguatoxins are enforced. SAM 3.1 segmentation evidence and Muse Wonder biological advisory notes are combined harmoniously alongside Muse Glimmer vision.
+  5. Secret Isolation & Zero Key Leakage: `MODEL_API_KEY` remains strictly backend-isolated, never exposed to clients, git, or responses. `meta-health` reports Muse Glimmer multimodal capability without making billable probe calls.
+- Consequences: True AI image-based species classification powered by Meta's multimodal Muse Glimmer; grounded in Kiribati marine biology; robust offline fallback; 86 passing tests with zero regressions.
+
+## ADR-024 — 3-Stage Progressive AI Fish Species Identification Pipeline (accepted)
+- Status: Accepted (P0-15, 2026-11-03).
+- Context: The user requested that the AI identification system search in a specific order:
+  1. Search first for the image among backend fish species that have catalogued photographs.
+  2. If no confident match, evaluate visible morphological traits against the curated Kiribati traits catalog.
+  3. If still nothing matches, fall back to broad web-scale global marine taxonomy knowledge.
+- Decision:
+  1. Multi-Stage Pipeline Architecture: Implemented in `MetaAiService` (`sendVisionRequest`, `matchAgainstDbPhotos`, `matchByMorphologicalTraits`, `identifyFromWeb`) and orchestrated in `AiIdentificationController::identify`.
+  2. Stage 1 (DB Photos): Prompts Muse Glimmer with the catalog of species possessing photos (`photo_url`). Requires confidence $\ge 0.75$ and visual certainty to stop at Stage 1 (`source: db_image_match`).
+  3. Stage 2 (Morphological Traits): If Stage 1 returns no confident match, prompts with curated `visual_features` (caudal fin shapes, body coloration, jaw profiles). Requires confidence $\ge 0.65$ to stop at Stage 2 (`source: morphological_match`).
+  4. Stage 3 (Global Web Vision): If local references and traits do not match, queries broader global taxonomy knowledge without local constraints, grounding results in the DB if a species match is found (`source: web_vision`).
+  5. Auditability & UX: The response includes an `identification_pipeline` object recording latency, status, and outcome for all stages. The Next.js frontend displays a 3-step progress bar during analysis, color-coded stage badges, and an interactive pipeline audit trail.
+  6. Resilient Fallback: If Meta AI is unconfigured or unavailable, gracefully falls back to local knowledge base and database matching (`knowledge_base_fallback`), maintaining ADR-002 human confirmation standards.
+## ADR-025 — OpenAI Vision API Ultimate Fallback Integration (accepted)
+- Status: Accepted (P0-16, 2026-11-03).
+- Context: The user requested adding OpenAI's vision API (`gpt-4o`) as an additional ultimate fallback when Meta models (Stages 1-3) and local species-matching (KB/DB hint and photo matching) have all finished without an identification.
+- Decision:
+  1. Service Encapsulation: Built dedicated `OpenAiVisionService` (`backend/app/Services/OpenAiVisionService.php`) calling OpenAI Chat Completions (`/v1/chat/completions`) with `model: gpt-4o` and structured JSON response formatting.
+  2. Execution Order: Triggered strictly as Stage 4: Meta Muse Glimmer (Stages 1-3) → Local KB & DB photo/hint matching → **OpenAI Vision (Stage 4)** → Deterministic KB hash fallback (absolute last resort for offline reproducibility).
+  3. Secret Isolation: `OPENAI_API_KEY` is loaded exclusively from backend configuration (`services.openai.api_key`), never exposed to frontend clients, Git, or logs.
+  4. Resilient Offline Graceful Degradation: If unconfigured, the service returns `status: unconfigured` without making any network requests, preserving 100% offline functionality.
+  5. Pipeline & Health Reporting: Added `openai_vision` stage tracking to the `identification_pipeline` audit object, `openai_model` metadata to the identification response, and health status reporting in `GET /api/ai/meta-health`.
+  6. Frontend UI: `AiFishIdentifierModal.tsx` upgraded with 4-stage animated progress tracker during analysis, Stage 4 teal badge (`Stage 4: OpenAI Vision (gpt-4o)`), 4-stage pipeline audit breadcrumbs, and OpenAI visual reasoning cards.
+  7. ADR-002 Compliance: OpenAI suggestions remain strictly advisory (`requires_human_confirmation: true`) with phototrap CFP disclaimer preserved.
+- Consequences: Highly robust multi-cloud fallback hierarchy; 92 backend PHPUnit tests pass (1164 assertions); Next.js builds cleanly with zero TypeScript errors.
+
+## ADR-026 — Parallel AI Fish Image Identification (Meta Muse Glimmer & OpenAI Vision) (accepted)
+- Status: Accepted (P0-17, 2026-11-03).
+- Context: The user required independent parallel evaluation by both Meta Muse Glimmer and OpenAI Vision on the same uploaded catch photograph. The backend must orchestrate parallel execution, normalize model responses, compare results (agreement, disagreement, single provider, both failed, insufficient evidence), preserve catalog integrity without fabricating species records, and present side-by-side comparison with human confirmation controls in Flutter.
+- Decision:
+  1. Service Architecture:
+     - `OpenAiFishVisionService`: Dedicated OpenAI Vision provider grounded in the 42 Kiribati marine catalog records, returning strict structured JSON (`scientific_name`, `common_name`, `kiribati_name`, `confidence`, `visible_traits`, `reasoning`, `alternatives`, `review_status`, `ciguatera_risk`).
+     - `FishIdentificationComparisonService`: Orchestrates concurrent execution of Muse Glimmer and OpenAI Vision with timing, isolated error boundaries, schema normalization, and catalog matching.
+  2. Categorization & Matching:
+     - Comparison statuses: `agreement` (case/whitespace-insensitive scientific name match), `disagreement` (divergent species suggestions), `single_provider_result` (one succeeded, one failed), `both_failed` (both failed/timeout), `insufficient_evidence` (both confidence scores < 0.50).
+     - Database catalog preservation: Matches scientific names against `species` table. Unlisted species are preserved as candidate strings without inventing fake database rows.
+     - Confidence separation: Confidences remain separate and are never averaged or combined.
+  3. Database Persistence:
+     - Migration `2026_11_03_000002_create_fish_identification_providers_table.php` and Eloquent model `FishIdentificationProvider` record per-provider evaluations, latency, raw JSON payloads, and comparison outcomes linked to catches.
+  4. Endpoints:
+     - `POST /api/ai/compare-providers` (dedicated comparison endpoint)
+     - `POST /api/ai/identify-fish` (accepts `compare=true` flag returning dual providers alongside backward-compatible fields).
+  5. Mobile Interface (Flutter):
+     - `LogCatchScreen` renders dual provider cards (Meta Muse Glimmer and OpenAI Vision) with latency, separate confidence scores, morphological traits, and alternatives.
+     - Comparison status banner: distinct color-coded indicators (Agreement [green], Disagreement [orange], Single Provider [blue], Both Failed [red], Insufficient Evidence [grey]).
+     - Human Confirmation UX: On disagreement, auto-selection is prohibited and an explicit warning is displayed ("Models disagree — please verify with your own knowledge or select manually"). Interactive buttons allow the fisher to select "Use Meta Muse Glimmer", "Use OpenAI Vision", or choose manually from the catalog.
+     - Mandatory advisory: "AI identification is advisory only. Ciguatera safety cannot be determined by AI. Human confirmation required."
+- Consequences: Full multi-model evaluation capability; 104 backend PHPUnit tests pass (1234 assertions); 54 Flutter mobile tests pass with zero regressions; zero API key leakage; offline compatibility preserved.
+
+## ADR-027 — User AI Vision Provider Selection (Meta Muse Glimmer / OpenAI Vision / Parallel Comparison) (accepted)
+- Status: Accepted (P0-18, 2026-11-03).
+- Context: The user requested allowing users (fishermen in Flutter mobile and fisheries officers in Next.js admin) to explicitly choose which AI model to run for fish recognition: Meta Muse Glimmer, OpenAI Vision, or Parallel Comparison of both.
+- Decision:
+  1. API Parameter Routing:
+     - `POST /api/ai/identify-fish` accepts a `provider` or `selected_provider` parameter (`'openai'`, `'meta'`/`'muse_glimmer'`, `'compare'`/`'parallel'`, or default `'auto'`).
+     - When `'openai'` is specified: executes `OpenAiFishVisionService` grounded in the Kiribati species catalog, normalizes the response via `FishIdentificationComparisonService::normalizeOpenAiResponse`, matches against the database catalog without inventing phantom records, and returns single provider identification.
+     - When `'meta'`/`'muse_glimmer'` is specified: executes `MetaAiService` vision pipeline with SAM evidence and species hints, normalizes via `normalizeMuseResponse`, and returns single provider identification.
+     - When `'compare'`/`'parallel'` is specified: delegates to `FishIdentificationComparisonService::compare()`, executing both providers concurrently and returning comparison metrics, dual provider results, and agreement status.
+  2. Next.js Admin UI (`AiFishIdentifierModal.tsx`):
+     - Interactive segmented control allowing selection between `⚖️ Compare Both`, `🔮 Meta Muse Glimmer`, and `⚡ OpenAI Vision (GPT-4o)`.
+     - In comparison mode: displays agreement/disagreement banner, shared visual traits, side-by-side cards with latency and confidence badges, and 1-click "Use Suggestion" buttons.
+     - In single mode: displays the chosen model badge and reasoning.
+  3. Flutter Mobile UI (`LogCatchScreen.dart`):
+     - Interactive segmented ChoiceChips (`⚖️ Both (Compare)`, `🔮 Meta Muse`, `⚡ OpenAI`) positioned prominently above specimen presets.
+     - `_selectedAiProvider` state forwarded through `SyncService.identifyFishOnlineOrOffline` and `ApiClient.identifyFish`.
+     - Strict conflict safety: On disagreement, auto-selection is prohibited and an explicit warning is displayed requiring human ground truth.
+- Consequences: Gives fishers and administrators full agency over AI model selection while retaining parallel comparison capability and strict human safety confirmation. 106 PHPUnit tests pass; 54+ Flutter mobile tests pass; Next.js builds cleanly.
+
+## ADR-028 — Resilient Offline Catalog Grounding for AI Vision Comparison (superseded)
+- Status: Superseded by ADR-029 (2026-11-03).
+- Context: In offline field usage at sea, containerized sandboxes, or development environments without outbound internet/DNS, cloud endpoints (`api.meta.ai`, `api.openai.com`) are unreachable. A fallback mechanism attempted to generate grounded comparison responses, but inadvertently fabricated 94% and 89% confidence scores and used CRC32 modulo hashing that incorrectly identified bonefish as *Te Kuau* (*Epinephelus fasciatus*).
+- Superseded by: ADR-029.
+
+## ADR-029 — Honest AI Provider Status, Confidence Provenance and Offline Fallback Integrity (accepted)
+- Status: Accepted (P0-20, 2026-11-03).
+- Context: A photograph of a bonefish was incorrectly identified by both Meta Muse Glimmer and OpenAI Vision as *Te Kuau* (Blacktip Grouper, *Epinephelus fasciatus*) with fabricated confidences (94% and 89%) and latencies (12ms and 18ms), while error messages reported both APIs were unreachable. This root-caused to:
+  1. CRC32 modulo hashing in `FishIdentificationComparisonService` and `AiIdentificationController` forcing an arbitrary species index (index 3 was *Te Kuau*).
+  2. Static hardcoded float confidence values (0.94 and 0.89) and clamped artificial latencies (`max(12, ...)` and `max(18, ...)`).
+  3. Overwriting provider failure statuses with `'success'`, falsely declaring comparison `'agreement'`.
+- Decision:
+  1. Honest Provider Status Lifecycle:
+     - Provider status is strictly one of: `success`, `unavailable`, `timeout`, `invalid_response`, `fallback`, `insufficient_evidence`.
+     - When an API key is missing or endpoint is unreachable, provider status is `'unavailable'`.
+     - When external APIs return network timeouts, provider status is `'timeout'`.
+     - When external APIs return malformed JSON, provider status is `'invalid_response'`.
+     - When both fail or are unconfigured, comparison status is `'both_failed'` (never `'agreement'`).
+  2. Strict Confidence Provenance:
+     - When external vision APIs fail or are unconfigured, provider `confidence` is strictly `null`.
+     - Confidence displays as "Not available" (never a fabricated percentage).
+     - Durations reflect genuine wall-clock HTTP execution without arbitrary artificial minimum clamps.
+  3. Offline Catalogue Reference Integrity:
+     - CRC32 modulo species selection is completely eliminated.
+     - Offline catalogue never guesses species or pretends pre-written knowledge base descriptions were observed in the image.
+     - If an observer provides a search hint, genuine database/knowledge base records are returned as `offline_catalogue` reference with status `'fallback'`, `confidence: null`, and `human_confirmation_required: true`.
+     - If no hint is provided or no match exists, returns `identification: 'No reliable match'`, `suggested_species: null`, `status: 'insufficient_evidence'`, and `confidence: null`.
+  4. User Interface Grounding:
+     - Flutter UI (`LogCatchScreen`) and Next.js Admin display color-coded status badges: `UNAVAILABLE` (amber/orange), `TIMEOUT` (deep orange), `FAILED` (red), `SUCCESS` (green).
+     - When both fail: displays "AI IDENTIFICATION UNAVAILABLE" banner explaining live AI is unreachable.
+     - Renders dedicated `Offline Catalogue Reference` card clearly distinguished from live vision models.
 - Consequences:
-- Approved by:
+  - Eliminates false species identification and fabricated confidence scores entirely.
+  - Complete 26-test suite in `FishIdentificationComparisonTest` passes, including 10 dedicated bonefish vs Te Kuau regression tests.
+  - All 118 backend tests pass (1322 assertions).
+  - Preserves offline-first architecture while upholding absolute scientific honesty and fisheries safety.
+
+## ADR-030 — Meta Responses API Payload Structure, OpenAI Quota Handling and Honest Multi-Provider Comparison (accepted)
+- Status: Accepted (P0-22, 2026-11-04).
+- Context:
+  1. Meta Model API (`https://api.meta.ai/v1/responses`) returned HTTP 400 with `input[0].content did not match any supported type` when sent OpenAI-style multi-modal chat payloads (`type: text`, `type: image_url`, `image_url: {url: ...}`).
+  2. OpenAI Vision returned HTTP 429 with `insufficient_quota` / `You have no credits remaining`, causing continuous repeated retries and failed identification attempts.
+  3. When one provider failed due to billing/quota or rate limiting, comparison normalization needed explicit mapping (`quota_exceeded`, `rate_limited`, `unauthorized`, `invalid_payload`) to prevent generic failures or fabricated fallbacks.
+- Decision:
+  1. **Meta Model API Responses Schema Alignment**:
+     - Format payload according to verified Meta Responses API structure:
+       `input: [{ type: 'message', role: 'user', content: [{ type: 'input_text', text: ... }, { type: 'input_image', image_url: <dataUrlOrString> }] }]`.
+     - Direct string `image_url` (data URL `data:image/jpeg;base64,...` or direct reachable string) rather than nested object `{ url: ... }`.
+     - Helper `toDataUrl()` encodes local filesystem/uploads images to base64 data URLs without outbound network calls during testing.
+     - HTTP status mapping: 429 -> `rate_limited`, 401/403 -> `unauthorized`, 404 -> `model_unavailable`, 400 -> `invalid_payload`, 408/504 -> `timeout`.
+  2. **OpenAI Quota & Error Handling**:
+     - Detect HTTP 429 / 402 with `insufficient_quota` or "no credits remaining" and map to dedicated status `quota_exceeded`.
+     - Cache quota exhaustion state in Redis/file cache for 10 minutes (`openai_quota_exceeded`) to immediately short-circuit repeated calls, saving latency and avoiding hammering external servers.
+     - Distinguish authentication failures (HTTP 401 `unauthorized`) and standard rate limiting (HTTP 429 `rate_limited`) from quota exhaustion.
+  3. **Multi-Provider Comparison Integrity**:
+     - Normalization preserves `quota_exceeded`, `rate_limited`, `unauthorized`, `invalid_payload` explicitly.
+     - If one provider fails (or exceeds quota) and the other succeeds, comparison returns `single_provider_result` with the failed provider's status and honest disclaimer; the failed provider is NEVER fabricated or replaced by catalogue guessing.
+     - If both fail, comparison returns `both_failed` with confidence strictly `null`.
+     - Human confirmation remains mandatory across all comparison states.
+
+
+## ADR-031 — DNS Stall Fix: ResolvesApiEndpoints Applied to AiIdentificationController::resolveImageDataUrl() (accepted)
+- Status: Accepted (P0-23, 2026-11-04).
+- Context:
+  - `AiIdentificationController::resolveImageDataUrl()` fetches external image URLs (e.g. Unsplash CDN) via `Http::timeout(10)->get($imagePath)` to convert them to base64 data URLs for SAM 3.1 and Meta vision ingestion.
+  - The container's `/etc/resolv.conf` stub resolver (`127.0.0.53`) is unreachable when systemd is not running as PID 1 (Antigravity sandbox). This caused `getaddrinfo()` to hang 5–10s before returning `cURL error 28`, making external image fetches silently return `null` and causing SAM/Muse to skip image segmentation and fall back to offline results.
+  - All backend AI services (`MetaAiService`, `SamSegmentationService`, `OpenAiFishVisionService`, `OpenAiVisionService`) had already been patched with `ResolvesApiEndpoints` and `getCurlOptions()`. `AiIdentificationController` was the last remaining call site without pinning.
+- Decision:
+  - Add `use ResolvesApiEndpoints;` trait to `AiIdentificationController` and import `App\Services\Concerns\ResolvesApiEndpoints`.
+  - Replace `Http::timeout(10)->get($imagePath)` with `Http::withOptions($this->getCurlOptions($imagePath))->timeout(10)->get($imagePath)` in `resolveImageDataUrl()`.
+  - `getCurlOptions()` resolves IP via `dns_get_record()` (PHP internal resolver, bypasses `getaddrinfo()`), pins result via `CURLOPT_RESOLVE`, and forces IPv4 (`CURLOPT_IPRESOLVE`).
+  - For hosts without a static cache entry (e.g. image CDNs), the trait dynamically resolves and pins the IP.
+- Consequences:
+  - External image fetches resolve in <1s rather than timing out or hanging.
+  - Prevents silent `null` returns that would bypass SAM segmentation and Muse Glimmer vision, forcing offline fallback incorrectly.
+  - 128/128 backend tests pass (0 regressions). Live end-to-end test: Unsplash image resolved and encoded to data URL in 0.94s.
+  - `ResolvesApiEndpoints` is now consistently applied to all outbound HTTP call sites in the application.
+
+
+
 
 
 

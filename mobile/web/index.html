@@ -33,6 +33,37 @@
   <link rel="manifest" href="manifest.json">
 </head>
 <body>
+  <div id="flutter_loading_indicator" style="position: fixed; inset: 0; background: linear-gradient(135deg, #007A87 0%, #004d56 100%); display: flex; flex-direction: column; align-items: center; justify-content: center; color: white; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; z-index: 999999;">
+    <div style="width: 50px; height: 50px; border: 4px solid rgba(255, 255, 255, 0.25); border-top: 4px solid #ffffff; border-radius: 50%; animation: flutter_spin 0.8s linear infinite;"></div>
+    <div style="margin-top: 24px; font-size: 20px; font-weight: 700; letter-spacing: 0.5px;">Kiribati Fisheries Assistant</div>
+    <div style="margin-top: 8px; font-size: 13px; opacity: 0.85; text-align: center; max-width: 320px; line-height: 1.4;">Loading offline radar, maps & species catalog...</div>
+    <div id="flutter_loading_hint" style="margin-top: 20px; font-size: 11px; opacity: 0.7;">First load takes a few seconds to initialize local SQLite & WASM</div>
+    <style>
+      @keyframes flutter_spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+    </style>
+  </div>
+  <script>
+    window.addEventListener('flutter-first-frame', function () {
+      var loader = document.getElementById('flutter_loading_indicator');
+      if (loader) {
+        loader.style.transition = 'opacity 0.4s ease';
+        loader.style.opacity = '0';
+        setTimeout(function() { if (loader.parentNode) loader.remove(); }, 400);
+      }
+    });
+    setTimeout(function() {
+      var loader = document.getElementById('flutter_loading_indicator');
+      if (loader && !document.querySelector('flt-glass-pane') && !document.querySelector('flutter-view')) {
+        var hint = document.getElementById('flutter_loading_hint');
+        if (hint) {
+          hint.innerHTML = '<button onclick="if(navigator.serviceWorker){navigator.serviceWorker.getRegistrations().then(r=>r.forEach(s=>s.unregister()));}localStorage.clear();location.reload(true);" style="padding: 8px 16px; background: white; color: #007A87; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; box-shadow: 0 2px 8px rgba(0,0,0,0.2);">Clear Cache & Reload</button>';
+        }
+      }
+    }, 10000);
+  </script>
   <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>

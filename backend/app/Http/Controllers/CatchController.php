@@ -202,6 +202,19 @@ class CatchController extends Controller
             $filename = 'catch_' . time() . '_' . \Illuminate\Support\Str::random(8) . '.' . $file->getClientOriginalExtension();
             $file->move(public_path('uploads/catches'), $filename);
             $photoUrl = url('uploads/catches/' . $filename);
+        } elseif ($photoUrl && preg_match('/^data:image\/(\w+);base64,/i', $photoUrl, $matches)) {
+            $ext = strtolower($matches[1]) === 'jpeg' ? 'jpg' : strtolower($matches[1]);
+            $base64Data = substr($photoUrl, strpos($photoUrl, ',') + 1);
+            $decoded = base64_decode($base64Data);
+            if ($decoded !== false) {
+                $dir = public_path('uploads/catches');
+                if (!file_exists($dir)) {
+                    mkdir($dir, 0755, true);
+                }
+                $filename = 'catch_' . time() . '_' . \Illuminate\Support\Str::random(8) . '.' . $ext;
+                file_put_contents($dir . '/' . $filename, $decoded);
+                $photoUrl = url('uploads/catches/' . $filename);
+            }
         }
 
         // Determine species_id

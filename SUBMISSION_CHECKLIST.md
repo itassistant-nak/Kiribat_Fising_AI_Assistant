@@ -75,11 +75,11 @@ unless marked otherwise.
 - **SAM 3.1 segmentation integrated (Day 4 follow-up):**
   `SamSegmentationService` calls `sam-3.1` on the same Meta Model API
   (`MODEL_API_KEY` auth, Responses streaming), decodes the SAM 3 grammar
-  (boxes + COCO-RLE mask coverage), returns the raw output verbatim, and
-  feeds `identification.segmentation` evidence into `/api/ai/identify-fish`
-  (fish/no-fish warning; KB suggestion unchanged; never blocks). Raw
-  responses persist via `catches.ai_metadata`. 8 PHPUnit tests (faked
-  streams) pass; suite total 54.
+  (bounding boxes + mask presence detected; mask coverage remains unknown per
+  ADR-016 until the official arithmetic-coded base-85 codec is ported), returns
+  the raw output verbatim, and feeds `identification.segmentation` evidence into
+  `/api/ai/identify-fish` (fish/no-fish warning; KB suggestion unchanged; never
+  blocks). Raw responses persist via `catches.ai_metadata`. 10 PHPUnit tests pass.
 - **Live SAM verified:** user configured `MODEL_API_KEY`; one real
   `sam-3.1` call returned HTTP 200 in 6.8s with 17 objects; the verbatim
   raw output (15,177 B) is stored in catch #23's `ai_metadata` (read-back

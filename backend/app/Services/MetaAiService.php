@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Services\Concerns\ResolvesApiEndpoints;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 
@@ -15,21 +16,28 @@ use Illuminate\Support\Facades\Log;
  */
 class MetaAiService
 {
+    use ResolvesApiEndpoints;
     protected string $endpoint;
     protected string $model;
+    protected string $visionModel;
     protected ?string $apiKey;
     protected int $timeout;
+    protected int $visionTimeout;
 
     public function __construct(
         ?string $endpoint = null,
         ?string $model = null,
         ?string $apiKey = null,
-        ?int $timeout = null
+        ?int $timeout = null,
+        ?string $visionModel = null,
+        ?int $visionTimeout = null
     ) {
         $this->endpoint = $endpoint ?? config('services.meta_ai.endpoint', 'https://api.meta.ai/v1/responses');
         $this->model = $model ?? config('services.meta_ai.model', 'muse-wonder-1.0');
+        $this->visionModel = $visionModel ?? config('services.meta_ai.vision_model', 'muse-glimmer');
         $this->apiKey = $apiKey ?? config('services.meta_ai.api_key');
         $this->timeout = $timeout ?? (int) config('services.meta_ai.timeout', 15);
+        $this->visionTimeout = $visionTimeout ?? (int) config('services.meta_ai.vision_timeout', 30);
     }
 
     /**
@@ -47,6 +55,14 @@ class MetaAiService
     public function getModel(): string
     {
         return $this->model;
+    }
+
+    /**
+     * Get the configured multimodal vision model identifier (Muse Glimmer).
+     */
+    public function getVisionModel(): string
+    {
+        return $this->visionModel;
     }
 
     /**
@@ -94,7 +110,8 @@ class MetaAiService
                 'input' => $prompt,
             ];
 
-            $response = Http::timeout($this->timeout)
+            $response = Http::withOptions($this->getCurlOptions($this->endpoint))
+                ->timeout($this->timeout)
                 ->withToken($this->apiKey)
                 ->acceptJson()
                 ->post($this->endpoint, $payload);
@@ -348,21 +365,23 @@ PROMPT;
         }
 
         try {
-            // Attempt standard OpenAI-compatible multi-modal structure
+            // Attempt standard Meta Responses multi-modal structure
             $payload = [
                 'model' => $this->model,
                 'input' => [
                     [
+                        'type'    => 'message',
                         'role'    => 'user',
                         'content' => [
-                            ['type' => 'text',      'text'      => 'Briefly describe this marine specimen.'],
-                            ['type' => 'image_url', 'image_url' => ['url' => $imageUrl]],
+                            ['type' => 'input_text',  'text'      => 'Briefly describe this marine specimen.'],
+                            ['type' => 'input_image', 'image_url' => $this->toDataUrl($imageUrl) ?? $imageUrl],
                         ],
                     ],
                 ],
             ];
 
-            $response = Http::timeout($this->timeout)
+            $response = Http::withOptions($this->getCurlOptions($this->endpoint))
+                ->timeout($this->timeout)
                 ->withToken($this->apiKey)
                 ->acceptJson()
                 ->post($this->endpoint, $payload);
@@ -399,6 +418,680 @@ PROMPT;
                 'investigated_at'  => now()->toIso8601String(),
             ];
         }
+    }
+
+    /**
+     * Resolve image URL or path to a base64 data URL for Meta Model API.
+     */
+    public function toDataUrl(string $imageUrlOrDataUrl): ?string
+    {
+        $raw = trim($imageUrlOrDataUrl);
+        if ($raw === '') {
+            return null;
+        }
+
+        if (str_starts_with($raw, 'data:image/')) {
+            return $raw;
+        }
+
+        // Local file path
+        if (is_file($raw) && is_readable($raw)) {
+            $bytes = @file_get_contents($raw);
+            if ($bytes !== false && strlen($bytes) <= 10485760) {
+                $mime = mime_content_type($raw) ?: 'image/jpeg';
+                return 'data:' . $mime . ';base64,' . base64_encode($bytes);
+            }
+        }
+
+        // Local uploads path referenced by URL
+        if (str_contains($raw, 'uploads/catches/') || str_contains($raw, 'uploads/species/')) {
+            $path = parse_url($raw, PHP_URL_PATH);
+            if ($path) {
+                $local = public_path(ltrim($path, '/'));
+                if (is_file($local) && is_readable($local)) {
+                    $bytes = @file_get_contents($local);
+                    if ($bytes !== false && strlen($bytes) <= 10485760) {
+                        $mime = mime_content_type($local) ?: 'image/jpeg';
+                        return 'data:' . $mime . ';base64,' . base64_encode($bytes);
+                    }
+                }
+            }
+        }
+
+        // Remote HTTP/HTTPS URL
+        if (str_starts_with($raw, 'http://') || str_starts_with($raw, 'https://')) {
+            if (app()->environment('testing')) {
+                return $raw;
+            }
+            try {
+                $res = Http::timeout(10)->get($raw);
+                if ($res->successful()) {
+                    $bytes = $res->body();
+                    $contentType = (string) $res->header('Content-Type', 'image/jpeg');
+                    if ($bytes !== '' && strlen($bytes) <= 10485760 && str_contains($contentType, 'image')) {
+                        $mime = trim(explode(';', $contentType)[0]);
+                        return 'data:' . $mime . ';base64,' . base64_encode($bytes);
+                    }
+                }
+            } catch (\Throwable) {
+                // Return original if fetch fails
+            }
+        }
+
+        return $raw;
+    }
+
+    /**
+     * Send a multimodal vision request with an image and text prompt to Meta Model API.
+     *
+     * @param string $imageUrlOrDataUrl
+     * @param string $prompt
+     * @param array  $options
+     * @return array Standardized result with parsed JSON or error
+     */
+    public function sendVisionRequest(string $imageUrlOrDataUrl, string $prompt, array $options = []): array
+    {
+        $targetModel = $options['model'] ?? $this->visionModel;
+
+        if (!$this->isConfigured()) {
+            return [
+                'status'     => 'unconfigured',
+                'model'      => $targetModel,
+                'parsed'     => null,
+                'raw_text'   => null,
+                'latency_ms' => 0,
+                'error'      => 'MODEL_API_KEY is not configured in the server environment.',
+            ];
+        }
+
+        $startTime = microtime(true);
+
+        try {
+            $dataUrl = $this->toDataUrl($imageUrlOrDataUrl);
+            if (empty($dataUrl)) {
+                return [
+                    'status'     => 'invalid_input',
+                    'model'      => $targetModel,
+                    'parsed'     => null,
+                    'raw_text'   => null,
+                    'latency_ms' => 0,
+                    'error'      => 'Could not resolve image data for vision request.',
+                ];
+            }
+
+            $payload = [
+                'model' => $targetModel,
+                'input' => [
+                    [
+                        'type'    => 'message',
+                        'role'    => 'user',
+                        'content' => [
+                            ['type' => 'input_text',  'text'      => trim($prompt)],
+                            ['type' => 'input_image', 'image_url' => $dataUrl],
+                        ],
+                    ],
+                ],
+            ];
+
+            $response = Http::withOptions($this->getCurlOptions($this->endpoint))
+                ->timeout($this->visionTimeout)
+                ->withToken($this->apiKey)
+                ->acceptJson()
+                ->post($this->endpoint, $payload);
+
+            $latencyMs = (int) round((microtime(true) - $startTime) * 1000);
+
+            if ($response->successful()) {
+                $data = $response->json() ?? [];
+                $extractedText = $this->extractTextFromResponse($data);
+                $parsed = $this->parseJsonPayload($extractedText);
+
+                return [
+                    'status'     => 'completed',
+                    'model'      => $data['model'] ?? $targetModel,
+                    'parsed'     => $parsed,
+                    'raw_text'   => $extractedText,
+                    'latency_ms' => $latencyMs,
+                    'error'      => null,
+                ];
+            }
+
+            $statusCode = $response->status();
+            $errorMessage = $this->extractErrorMessage($response->json(), $response->body(), $statusCode);
+
+            if ($statusCode === 429) {
+                $status = 'rate_limited';
+            } elseif ($statusCode === 401 || $statusCode === 403) {
+                $status = 'unauthorized';
+            } elseif ($statusCode === 404) {
+                $status = 'model_unavailable';
+            } elseif ($statusCode === 408 || $statusCode === 504) {
+                $status = 'timeout';
+            } elseif ($statusCode === 400) {
+                $status = 'invalid_payload';
+            } else {
+                $status = 'failed';
+            }
+
+            return [
+                'status'      => $status,
+                'model'       => $targetModel,
+                'parsed'      => null,
+                'raw_text'    => null,
+                'latency_ms'  => $latencyMs,
+                'status_code' => $statusCode,
+                'error'       => $errorMessage,
+            ];
+        } catch (\Throwable $e) {
+            $latencyMs = (int) round((microtime(true) - $startTime) * 1000);
+            $msg = $e->getMessage();
+            $isTimeout = str_contains(strtolower($msg), 'timeout') || str_contains(strtolower($msg), 'timed out');
+
+            return [
+                'status'     => $isTimeout ? 'timeout' : 'failed',
+                'model'      => $targetModel,
+                'parsed'     => null,
+                'raw_text'   => null,
+                'latency_ms' => $latencyMs,
+                'error'      => 'Connection to Meta vision API failed: ' . $msg,
+            ];
+        }
+    }
+
+    /**
+     * Stage 1: Match against catalogued backend species that have reference photographs.
+     *
+     * @param string $imageUrlOrDataUrl Public image URL or base64 data URL
+     * @param array  $speciesWithPhotos Known species records that possess reference photos
+     * @param array  $samEvidence       SAM 3.1 segmentation evidence
+     * @param string $hint              Fisher hint text
+     * @param array  $options           Optional parameter overrides
+     * @return array Standardized result with matched bool and identification
+     */
+    public function matchAgainstDbPhotos(
+        string $imageUrlOrDataUrl,
+        array $speciesWithPhotos = [],
+        array $samEvidence = [],
+        string $hint = '',
+        array $options = []
+    ): array {
+        if (empty($speciesWithPhotos)) {
+            return [
+                'status'         => 'no_match',
+                'matched'        => false,
+                'model'          => $this->visionModel,
+                'identification' => null,
+                'latency_ms'     => 0,
+                'error'          => 'No reference species with photos available in database.',
+            ];
+        }
+
+        $formatted = [];
+        foreach ($speciesWithPhotos as $spec) {
+            $kName = $spec['kiribati_name'] ?? '';
+            $eName = $spec['english_name'] ?? '';
+            $sName = $spec['scientific_name'] ?? '';
+            if ($kName && $eName) {
+                $formatted[] = "- {$kName} ({$eName} / {$sName}) [Catalogued reference photo available]";
+            }
+        }
+        $speciesContext = "Kiribati fisheries catalogued reference species with photographs:\n"
+            . implode("\n", array_slice($formatted, 0, 20)) . "\n\n";
+
+        $samSummary = '';
+        if (!empty($samEvidence['status']) && $samEvidence['status'] === 'ok') {
+            $count = (int) ($samEvidence['object_count'] ?? 0);
+            $samSummary = "Image segmentation evidence: SAM 3.1 segmented {$count} fish object(s).\n";
+        }
+
+        $hintLine = $hint ? "Fisher observation hint: \"{$hint}\".\n" : '';
+
+        $prompt = <<<PROMPT
+You are an expert marine fisheries classifier in Kiribati.
+STAGE 1 — DATABASE PHOTO MATCHING:
+Examine this uploaded fish photograph.
+Your task is to determine if this specimen visually matches one of the species catalogued with reference photographs in the Kiribati fisheries database:
+
+{$speciesContext}{$samSummary}{$hintLine}
+Instructions:
+1. Compare the uploaded photo's visual appearance (body shape, color patterns, fin morphology, facial markings) against the catalogued reference species above.
+2. If this fish clearly matches one of the listed species with high visual certainty (confidence >= 0.75), set "matched": true.
+3. If the fish does NOT clearly match any of the reference species with photos above, or if you are uncertain (confidence < 0.75), set "matched": false so Stage 2 (morphological traits) can evaluate it.
+
+Return a strict JSON object:
+{
+  "matched": true,
+  "kiribati_name": "<authentic Kiribati local name of matching species, e.g. Te Bwere>",
+  "english_name": "<English common name of matching species, e.g. Paddletail Snapper>",
+  "scientific_name": "<Binomial scientific name, e.g. Lutjanus gibbus>",
+  "confidence": <decimal between 0.50 and 0.99, e.g. 0.95>,
+  "visual_features": [
+    "<matching visual feature 1>",
+    "<matching visual feature 2>"
+  ],
+  "reasoning": "<concise explanation of visual photo match or why no match was found>"
+}
+
+Rules:
+- If matched is false, set confidence to your best estimate but mark "matched": false.
+- Output ONLY the JSON object. Do not include markdown codeblocks or conversational text.
+PROMPT;
+
+        $res = $this->sendVisionRequest($imageUrlOrDataUrl, $prompt, $options);
+        if ($res['status'] !== 'completed') {
+            return [
+                'status'         => $res['status'],
+                'matched'        => false,
+                'model'          => $res['model'],
+                'identification' => null,
+                'raw_text'       => $res['raw_text'] ?? null,
+                'latency_ms'     => $res['latency_ms'],
+                'error'          => $res['error'],
+            ];
+        }
+
+        $parsed = $res['parsed'];
+        $confidence = isset($parsed['confidence']) ? (float) $parsed['confidence'] : 0.0;
+        $isMatched = !empty($parsed['matched']) || (!isset($parsed['matched']) && $confidence >= 0.75);
+
+        if ($isMatched && !empty($parsed['kiribati_name']) && !empty($parsed['english_name']) && $confidence >= 0.75) {
+            return [
+                'status'         => 'completed',
+                'matched'        => true,
+                'model'          => $res['model'],
+                'identification' => [
+                    'kiribati_name'   => trim($parsed['kiribati_name']),
+                    'english_name'    => trim($parsed['english_name']),
+                    'scientific_name' => trim($parsed['scientific_name'] ?? ''),
+                    'confidence'      => min(0.99, max(0.50, $confidence)),
+                    'visual_features' => array_values(array_filter((array) ($parsed['visual_features'] ?? []))),
+                    'reasoning'       => $parsed['reasoning'] ?? null,
+                ],
+                'raw_text'       => $res['raw_text'],
+                'latency_ms'     => $res['latency_ms'],
+                'error'          => null,
+            ];
+        }
+
+        return [
+            'status'         => 'no_match',
+            'matched'        => false,
+            'model'          => $res['model'],
+            'identification' => null,
+            'raw_text'       => $res['raw_text'],
+            'latency_ms'     => $res['latency_ms'],
+            'reasoning'      => $parsed['reasoning'] ?? 'Specimen does not visually match catalogued reference species photos.',
+            'error'          => null,
+        ];
+    }
+
+    /**
+     * Stage 2: Match by morphological traits (fin shape, body profile, scales, markings)
+     * against curated Kiribati traits catalog.
+     *
+     * @param string $imageUrlOrDataUrl Public image URL or base64 data URL
+     * @param array  $speciesWithTraits Known species records with visual_features
+     * @param array  $samEvidence       SAM 3.1 segmentation evidence
+     * @param string $hint              Fisher hint text
+     * @param array  $options           Optional parameter overrides
+     * @return array Standardized result with matched bool and identification
+     */
+    public function matchByMorphologicalTraits(
+        string $imageUrlOrDataUrl,
+        array $speciesWithTraits = [],
+        array $samEvidence = [],
+        string $hint = '',
+        array $options = []
+    ): array {
+        if (empty($speciesWithTraits)) {
+            return [
+                'status'         => 'no_match',
+                'matched'        => false,
+                'model'          => $this->visionModel,
+                'identification' => null,
+                'latency_ms'     => 0,
+                'error'          => 'No species with morphological traits provided.',
+            ];
+        }
+
+        $formatted = [];
+        foreach ($speciesWithTraits as $spec) {
+            $kName = $spec['kiribati_name'] ?? '';
+            $eName = $spec['english_name'] ?? '';
+            $sName = $spec['scientific_name'] ?? '';
+            $feats = (array) ($spec['visual_features'] ?? []);
+            if ($kName && !empty($feats)) {
+                $traitBullets = implode("\n    * ", array_slice($feats, 0, 3));
+                $formatted[] = "- {$kName} ({$eName} / {$sName}):\n    * {$traitBullets}";
+            }
+        }
+        $traitsContext = "Curated Kiribati morphological trait profiles:\n"
+            . implode("\n", array_slice($formatted, 0, 15)) . "\n\n";
+
+        $samSummary = '';
+        if (!empty($samEvidence['status']) && $samEvidence['status'] === 'ok') {
+            $count = (int) ($samEvidence['object_count'] ?? 0);
+            $samSummary = "Image segmentation evidence: SAM 3.1 confirmed {$count} fish object(s).\n";
+        }
+
+        $hintLine = $hint ? "Fisher observation hint: \"{$hint}\".\n" : '';
+
+        $prompt = <<<PROMPT
+You are an expert marine fisheries biologist in Kiribati.
+STAGE 2 — MORPHOLOGICAL TRAITS MATCHING:
+The uploaded specimen did not produce a confident match in Stage 1 photo cataloging.
+Now examine the specific visible morphological traits in this fish photograph:
+- Caudal/tail fin shape, dorsal and anal fin characteristics
+- Body profile, lateral line markings, coloration, bar/spot patterns
+- Jaw structure, mouth orientation, opercular spines
+
+Compare against these curated morphological trait profiles from Kiribati:
+{$traitsContext}{$samSummary}{$hintLine}
+Instructions:
+1. Determine if the visible morphological traits match any curated trait profile above with confidence >= 0.65.
+2. If YES, set "matched": true and specify the observed matching traits.
+3. If NO (or if confidence < 0.65), set "matched": false so Stage 3 (broad web vision) can evaluate it.
+
+Return a strict JSON object:
+{
+  "matched": true,
+  "kiribati_name": "<matching Kiribati local name, e.g. Te Ingimea>",
+  "english_name": "<matching English name, e.g. Yellowfin Tuna>",
+  "scientific_name": "<matching Binomial scientific name, e.g. Thunnus albacares>",
+  "confidence": <decimal between 0.50 and 0.99, e.g. 0.88>,
+  "visual_features": [
+    "<observed morphological trait 1>",
+    "<observed morphological trait 2>"
+  ],
+  "reasoning": "<concise explanation of morphological trait correspondence or why no match was found>"
+}
+
+Rules:
+- Output ONLY the JSON object. Do not include markdown codeblocks or conversational text.
+PROMPT;
+
+        $res = $this->sendVisionRequest($imageUrlOrDataUrl, $prompt, $options);
+        if ($res['status'] !== 'completed') {
+            return [
+                'status'         => $res['status'],
+                'matched'        => false,
+                'model'          => $res['model'],
+                'identification' => null,
+                'raw_text'       => $res['raw_text'] ?? null,
+                'latency_ms'     => $res['latency_ms'],
+                'error'          => $res['error'],
+            ];
+        }
+
+        $parsed = $res['parsed'];
+        $confidence = isset($parsed['confidence']) ? (float) $parsed['confidence'] : 0.0;
+        $isMatched = !empty($parsed['matched']) || (!isset($parsed['matched']) && $confidence >= 0.65);
+
+        if ($isMatched && !empty($parsed['kiribati_name']) && !empty($parsed['english_name']) && $confidence >= 0.65) {
+            return [
+                'status'         => 'completed',
+                'matched'        => true,
+                'model'          => $res['model'],
+                'identification' => [
+                    'kiribati_name'   => trim($parsed['kiribati_name']),
+                    'english_name'    => trim($parsed['english_name']),
+                    'scientific_name' => trim($parsed['scientific_name'] ?? ''),
+                    'confidence'      => min(0.99, max(0.50, $confidence)),
+                    'visual_features' => array_values(array_filter((array) ($parsed['visual_features'] ?? []))),
+                    'reasoning'       => $parsed['reasoning'] ?? null,
+                ],
+                'raw_text'       => $res['raw_text'],
+                'latency_ms'     => $res['latency_ms'],
+                'error'          => null,
+            ];
+        }
+
+        return [
+            'status'         => 'no_match',
+            'matched'        => false,
+            'model'          => $res['model'],
+            'identification' => null,
+            'raw_text'       => $res['raw_text'],
+            'latency_ms'     => $res['latency_ms'],
+            'reasoning'      => $parsed['reasoning'] ?? 'Visible morphological traits do not match any curated Kiribati trait profiles.',
+            'error'          => null,
+        ];
+    }
+
+    /**
+     * Stage 3: Broad Global Marine Taxonomy & Web Knowledge Vision.
+     * Evaluates the specimen against full global fish taxonomy knowledge when local DB/traits fail.
+     *
+     * @param string $imageUrlOrDataUrl Public image URL or base64 data URL
+     * @param array  $samEvidence       SAM 3.1 segmentation evidence
+     * @param string $hint              Fisher hint text
+     * @param array  $options           Optional parameter overrides
+     * @return array Standardized result with identification or error
+     */
+    public function identifyFromWeb(
+        string $imageUrlOrDataUrl,
+        array $samEvidence = [],
+        string $hint = '',
+        array $options = []
+    ): array {
+        $samSummary = '';
+        if (!empty($samEvidence['status']) && $samEvidence['status'] === 'ok') {
+            $count = (int) ($samEvidence['object_count'] ?? 0);
+            $samSummary = "Image segmentation evidence: SAM 3.1 confirmed {$count} fish object(s).\n";
+        }
+
+        $hintLine = $hint ? "Fisher observation hint: \"{$hint}\".\n" : '';
+
+        $prompt = <<<PROMPT
+You are an expert global marine biologist and taxonomist.
+STAGE 3 — BROAD GLOBAL FISH TAXONOMY & WEB KNOWLEDGE VISION:
+This fish specimen did not match local reference photo catalog (Stage 1) or local curated morphological trait profiles (Stage 2).
+Examine this fish photograph carefully using your comprehensive global marine taxonomy and web-scale ichthyological knowledge across Indo-Pacific, Pacific Ocean, and tropical waters.
+
+{$samSummary}{$hintLine}
+Determine:
+1. The most accurate English common name and binomial scientific name for this marine fish.
+2. The authentic Kiribati vernacular name if known (or best Pacific vernacular name).
+3. Observed morphological characteristics visible in the photograph.
+4. Estimated ciguatera or marine toxin risk level ("low", "medium", "high", "extreme") based on species biology and trophic level.
+5. Concise taxonomic reasoning explaining your determination.
+
+Return a strict JSON object:
+{
+  "kiribati_name": "<authentic Kiribati local name or Pacific vernacular>",
+  "english_name": "<English common name>",
+  "scientific_name": "<Binomial scientific name>",
+  "confidence": <decimal between 0.50 and 0.99, e.g. 0.85>,
+  "ciguatera_risk": "<low|medium|high|extreme>",
+  "visual_features": [
+    "<observed morphological trait 1>",
+    "<observed morphological trait 2>",
+    "<observed morphological trait 3>"
+  ],
+  "reasoning": "<concise explanation of species identification from global web-scale taxonomy knowledge>"
+}
+
+Rules:
+- Output ONLY the JSON object. Do not include markdown codeblocks or conversational text.
+PROMPT;
+
+        $res = $this->sendVisionRequest($imageUrlOrDataUrl, $prompt, $options);
+        if ($res['status'] !== 'completed') {
+            return [
+                'status'         => $res['status'],
+                'model'          => $res['model'],
+                'identification' => null,
+                'raw_text'       => $res['raw_text'] ?? null,
+                'latency_ms'     => $res['latency_ms'],
+                'error'          => $res['error'],
+            ];
+        }
+
+        $parsed = $res['parsed'];
+        if ($parsed && !empty($parsed['english_name'])) {
+            $confidence = (isset($parsed['confidence']) && is_numeric($parsed['confidence']))
+                ? round(max(0.0, min(1.0, (float) $parsed['confidence'])), 2)
+                : null;
+            $risk = strtolower(trim((string) ($parsed['ciguatera_risk'] ?? 'low')));
+            if (!in_array($risk, ['low', 'medium', 'high', 'extreme', 'unknown'])) {
+                $risk = 'low';
+            }
+
+            return [
+                'status'         => 'completed',
+                'model'          => $res['model'],
+                'identification' => [
+                    'kiribati_name'   => trim($parsed['kiribati_name'] ?? $parsed['english_name']),
+                    'english_name'    => trim($parsed['english_name']),
+                    'scientific_name' => trim($parsed['scientific_name'] ?? ''),
+                    'confidence'      => $confidence,
+                    'ciguatera_risk'  => $risk,
+                    'visual_features' => array_values(array_filter((array) ($parsed['visual_features'] ?? []))),
+                    'reasoning'       => $parsed['reasoning'] ?? null,
+                ],
+                'raw_text'       => $res['raw_text'],
+                'latency_ms'     => $res['latency_ms'],
+                'error'          => null,
+            ];
+        }
+
+        return [
+            'status'         => 'partial',
+            'model'          => $res['model'],
+            'identification' => null,
+            'raw_text'       => $res['raw_text'],
+            'latency_ms'     => $res['latency_ms'],
+            'error'          => 'Model response could not be parsed into valid species JSON.',
+        ];
+    }
+
+    /**
+     * Identify a fish species from a photograph using Meta Muse Glimmer multimodal vision.
+     *
+     * @param string $imageUrlOrDataUrl Public image URL or base64 data URL
+     * @param array  $referenceSpecies  Known reference species records from Laravel DB / KB
+     * @param array  $samEvidence       SAM 3.1 segmentation evidence
+     * @param string $hint              Fisher hint text
+     * @param array  $options           Optional parameter overrides
+     * @return array Standardized vision identification result
+     */
+    public function identifyFishVision(
+        string $imageUrlOrDataUrl,
+        array $referenceSpecies = [],
+        array $samEvidence = [],
+        string $hint = '',
+        array $options = []
+    ): array {
+        $targetModel = $options['model'] ?? $this->visionModel;
+
+        if (!$this->isConfigured()) {
+            return [
+                'status'         => 'unconfigured',
+                'model'          => $targetModel,
+                'identification' => null,
+                'latency_ms'     => 0,
+                'error'          => 'MODEL_API_KEY is not configured in the server environment.',
+            ];
+        }
+
+        // Grounding reference list from Laravel backend species
+        $speciesContext = '';
+        if (!empty($referenceSpecies)) {
+            $formatted = [];
+            foreach ($referenceSpecies as $spec) {
+                $kName = $spec['kiribati_name'] ?? '';
+                $eName = $spec['english_name'] ?? '';
+                $sName = $spec['scientific_name'] ?? '';
+                if ($kName && $eName) {
+                    $formatted[] = "- {$kName} ({$eName} / {$sName})";
+                }
+            }
+            if (!empty($formatted)) {
+                $speciesContext = "Official Kiribati fisheries reference species:\n" . implode("\n", array_slice($formatted, 0, 15)) . "\n\n";
+            }
+        }
+
+        $samSummary = '';
+        if (!empty($samEvidence['status'])) {
+            $status = $samEvidence['status'];
+            if ($status === 'ok') {
+                $count  = (int) ($samEvidence['object_count'] ?? 0);
+                $hasBbx = !empty($samEvidence['best_box']);
+                $samSummary = "Image evidence: SAM 3.1 segmented {$count} object(s) matching concept 'fish'."
+                    . ($hasBbx ? ' Largest bounding box confirmed present.' : '') . "\n";
+            }
+        }
+
+        $hintLine = $hint ? "Fisher observation hint: \"{$hint}\".\n" : '';
+
+        $prompt = <<<PROMPT
+You are an expert marine biologist and fisheries identification assistant for Kiribati (Central Pacific).
+Examine this fish specimen photograph carefully.
+
+{$speciesContext}{$samSummary}{$hintLine}Tasks:
+1. Examine visible morphological traits: body profile, coloration, fin shapes (dorsal, caudal/tail, pectoral), mouth and jaw structure, and scale patterns.
+2. Determine the most accurate fish species match, matching one of the Kiribati reference species above if applicable.
+3. Return your determination as a strict JSON object with EXACTLY this structure:
+{
+  "kiribati_name": "<authentic Kiribati local name, e.g. Te Bwere>",
+  "english_name": "<English common name, e.g. Paddletail Snapper>",
+  "scientific_name": "<Binomial scientific name, e.g. Lutjanus gibbus>",
+  "confidence": <decimal between 0.50 and 0.99, e.g. 0.94>,
+  "visual_features": [
+    "<observed morphological trait 1>",
+    "<observed morphological trait 2>",
+    "<observed morphological trait 3>"
+  ],
+  "reasoning": "<concise explanation of why this specimen matches this species>"
+}
+
+Rules:
+- Do NOT suggest alternative species names outside marine taxonomy.
+- Ground your identification in the provided Kiribati fisheries species list when applicable.
+- Output ONLY the JSON object. Do not include markdown code block ticks or any conversational text.
+PROMPT;
+
+        $res = $this->sendVisionRequest($imageUrlOrDataUrl, $prompt, $options);
+        if ($res['status'] !== 'completed') {
+            return [
+                'status'         => $res['status'],
+                'model'          => $res['model'],
+                'identification' => null,
+                'latency_ms'     => $res['latency_ms'],
+                'status_code'    => $res['status_code'] ?? null,
+                'error'          => $res['error'],
+            ];
+        }
+
+        $parsed = $res['parsed'];
+        if ($parsed && !empty($parsed['kiribati_name']) && !empty($parsed['english_name'])) {
+            return [
+                'status'         => 'completed',
+                'model'          => $res['model'],
+                'identification' => [
+                    'kiribati_name'   => trim($parsed['kiribati_name']),
+                    'english_name'    => trim($parsed['english_name']),
+                    'scientific_name' => trim($parsed['scientific_name'] ?? ''),
+                    'confidence'      => (isset($parsed['confidence']) && is_numeric($parsed['confidence']))
+                        ? round(max(0.0, min(1.0, (float) $parsed['confidence'])), 2)
+                        : null,
+                    'visual_features' => array_values(array_filter((array) ($parsed['visual_features'] ?? []))),
+                    'reasoning'       => $parsed['reasoning'] ?? null,
+                ],
+                'raw_text'       => $res['raw_text'],
+                'latency_ms'     => $res['latency_ms'],
+                'error'          => null,
+            ];
+        }
+
+        return [
+            'status'         => 'partial',
+            'model'          => $res['model'],
+            'identification' => null,
+            'raw_text'       => $res['raw_text'],
+            'latency_ms'     => $res['latency_ms'],
+            'error'          => 'Model response could not be parsed into valid species JSON.',
+        ];
     }
 
 
@@ -460,5 +1153,37 @@ PROMPT;
         }
 
         return "HTTP request failed with status {$statusCode}.";
+    }
+
+    /**
+     * Clean and parse JSON from model output text.
+     */
+    protected function parseJsonPayload(string $text): ?array
+    {
+        $text = trim($text);
+
+        // Strip markdown codeblocks ```json ... ``` or ``` ... ```
+        if (preg_match('/```(?:json)?\s*([\s\S]*?)\s*```/', $text, $matches)) {
+            $text = trim($matches[1]);
+        }
+
+        // Direct json decode
+        $decoded = json_decode($text, true);
+        if (is_array($decoded)) {
+            return $decoded;
+        }
+
+        // Find outermost JSON object {...}
+        $start = strpos($text, '{');
+        $end = strrpos($text, '}');
+        if ($start !== false && $end !== false && $end > $start) {
+            $sub = substr($text, $start, $end - $start + 1);
+            $decoded = json_decode($sub, true);
+            if (is_array($decoded)) {
+                return $decoded;
+            }
+        }
+
+        return null;
     }
 }

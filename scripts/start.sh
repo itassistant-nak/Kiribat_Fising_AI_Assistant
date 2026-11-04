@@ -76,9 +76,9 @@ else
   echo ""
 fi
 
-echo "Starting Next.js admin (detached, log: /tmp/kiri_frontend.log)..."
+echo "Starting Next.js admin on port 3000 (detached, log: /tmp/kiri_frontend.log)..."
 cd "$ROOT/frontend"
-nohup npm run dev </dev/null >>/tmp/kiri_frontend.log 2>&1 &
+nohup npm run start -- -p 3000 </dev/null >>/tmp/kiri_frontend.log 2>&1 &
 echo $! > /tmp/kiri_frontend.pid
 disown 2>/dev/null || true
 if [ "$(wait_for 3000 / 45)" = "1" ]; then

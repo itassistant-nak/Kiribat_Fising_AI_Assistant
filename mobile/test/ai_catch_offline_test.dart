@@ -22,6 +22,8 @@ class MockAiApiClient extends ApiClient {
     String? imageUrl,
     String? hint,
     String? token,
+    bool compare = true,
+    String? provider,
   }) async {
     identifyCalled = true;
     identifyCount++;

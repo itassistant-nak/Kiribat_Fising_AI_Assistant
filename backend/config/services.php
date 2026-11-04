@@ -40,10 +40,24 @@ return [
         'model' => env('META_AI_MODEL', 'muse-wonder-1.0'),
         'api_key' => env('MODEL_API_KEY'),
         'timeout' => (int) env('META_AI_TIMEOUT', 15),
+        // Muse Glimmer multimodal vision model for fish species identification
+        'vision_model' => env('META_AI_VISION_MODEL', 'muse-glimmer'),
+        'vision_timeout' => (int) env('META_AI_VISION_TIMEOUT', 30),
         // SAM 3.1 image segmentation on the same Meta Model API (OpenAI-compatible)
         'base_url' => env('META_AI_BASE_URL', 'https://api.meta.ai/v1'),
         'sam_model' => env('META_AI_SAM_MODEL', 'sam-3.1'),
         'sam_timeout' => (int) env('META_AI_SAM_TIMEOUT', 60),
+    ],
+
+    // ── OpenAI Vision API — Stage 4 Ultimate Fallback ──────────────────────
+    // Used ONLY when all 3 Meta Muse Glimmer stages AND local species-matching
+    // yield no result. Key stays backend-only; never exposed to clients or Git.
+    'openai' => [
+        'endpoint'       => env('OPENAI_ENDPOINT', 'https://api.openai.com/v1/chat/completions'),
+        'vision_model'   => env('OPENAI_VISION_MODEL', 'gpt-4o'),
+        'api_key'        => env('OPENAI_API_KEY'),
+        'timeout'        => (int) env('OPENAI_TIMEOUT', 30),
+        'vision_enabled' => (bool) env('OPENAI_VISION_ENABLED', true),
     ],
 
 ];
