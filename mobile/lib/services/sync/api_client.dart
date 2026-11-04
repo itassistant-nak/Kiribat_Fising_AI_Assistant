@@ -19,6 +19,11 @@ class ApiClient {
         _client = client ?? http.Client();
 
   static String defaultBaseUrl() {
+    // API_BASE_URL is injected at build time via --dart-define=API_BASE_URL=...
+    // Set this in Railway as a Build Variable (not a runtime variable).
+    const defined = String.fromEnvironment('API_BASE_URL', defaultValue: '');
+    if (defined.isNotEmpty) return defined;
+
     if (kIsWeb) {
       try {
         final host = Uri.base.host;
