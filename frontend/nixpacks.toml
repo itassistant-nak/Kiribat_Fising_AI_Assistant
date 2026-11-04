@@ -1,0 +1,4 @@
+# Override Nixpacks default 'npm ci' with 'npm install' to avoid
+# lock file sync errors caused by platform/version differences.
+[phases.install]
+cmds = ["npm install"]
