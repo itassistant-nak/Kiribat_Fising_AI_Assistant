@@ -1,27 +1,7 @@
-[phases.setup]
-# PHP 8.3 + SQLite extensions for Laravel 11
-# Note: 'composer' is NOT a top-level nixpkg — installed via official installer below
-nixPkgs = [
-  "php83",
-  "php83Extensions.pdo",
-  "php83Extensions.pdo_sqlite",
-  "php83Extensions.sqlite3",
-  "php83Extensions.mbstring",
-  "php83Extensions.tokenizer",
-  "php83Extensions.xml",
-  "php83Extensions.ctype",
-  "php83Extensions.json",
-  "php83Extensions.openssl",
-  "php83Extensions.fileinfo",
-  "php83Extensions.curl",
-  "php83Extensions.zip"
-]
-
-[phases.install]
-cmds = [
-  "php -r \"copy('https://getcomposer.org/installer', 'composer-setup.php');\" && php composer-setup.php --install-dir=/usr/local/bin --filename=composer && rm composer-setup.php",
-  "composer install --no-dev --optimize-autoloader --no-interaction"
-]
+# Let Nixpacks auto-detect PHP + Composer from composer.json.
+# Do NOT override nixPkgs — many php83Extensions.* are PHP builtins
+# (json, ctype, tokenizer) and cause "undefined variable" nix errors.
+# SQLite (pdo_sqlite) is included in the base PHP nixpkg by default.
 
 [phases.build]
 cmds = [
