@@ -412,8 +412,8 @@ export default function AiFishIdentifierModal({
                     Select AI Vision Engine
                   </label>
                   <span className="text-[11px] font-medium text-slate-500">
-                    {selectedAiProvider === 'compare' && '⚖️ Parallel Comparison (Dual Evaluation)'}
-                    {selectedAiProvider === 'muse_glimmer' && '🔮 Meta Muse Glimmer Vision'}
+                    {selectedAiProvider === 'compare' && '⚖️ Parallel Comparison (SAM 3.1 + OpenAI)'}
+                    {selectedAiProvider === 'muse_glimmer' && '🔬 Meta SAM 3.1 (Segmentation Evidence)'}
                     {selectedAiProvider === 'openai' && '⚡ OpenAI Vision (GPT-4o)'}
                   </span>
                 </div>
@@ -439,8 +439,8 @@ export default function AiFishIdentifierModal({
                         : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-100'
                     }`}
                   >
-                    <span>🔮</span>
-                    <span>Meta Muse Glimmer</span>
+                    <span>🔬</span>
+                    <span>Meta SAM 3.1</span>
                   </button>
                   <button
                     type="button"
@@ -621,7 +621,7 @@ export default function AiFishIdentifierModal({
 
                       {/* Dual Provider Cards Grid */}
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        {/* Meta Muse Glimmer Card */}
+                        {/* Meta SAM 3.1 Card */}
                         {comparisonData.providers.muse_glimmer && (
                           <div className={`p-3 rounded-xl border flex flex-col justify-between transition ${
                             comparisonData.providers.muse_glimmer.status === 'success'
@@ -631,8 +631,12 @@ export default function AiFishIdentifierModal({
                             <div className="space-y-2">
                               <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-1.5">
-                                  <span className="text-sm">🔮</span>
-                                  <span className="text-xs font-bold text-purple-900">Meta Muse Glimmer</span>
+                                  <span className="text-sm">🔬</span>
+                                  <span className="text-xs font-bold text-purple-900">
+                                    {comparisonData.providers.muse_glimmer.model_identifier === 'sam-3.1' || comparisonData.providers.muse_glimmer.model?.includes('SAM')
+                                      ? 'Meta SAM 3.1 (Segmentation)'
+                                      : 'Meta AI'}
+                                  </span>
                                 </div>
                                 <div className="flex items-center gap-1.5">
                                   {comparisonData.providers.muse_glimmer.duration_ms > 0 && (
@@ -641,7 +645,9 @@ export default function AiFishIdentifierModal({
                                     </span>
                                   )}
                                   <span className="text-[11px] font-bold font-mono text-purple-800 bg-purple-100 px-2 py-0.5 rounded-full">
-                                    {((comparisonData.providers.muse_glimmer.confidence || 0) * 100).toFixed(0)}%
+                                    {comparisonData.providers.muse_glimmer.status === 'success'
+                                      ? 'Segmented'
+                                      : 'Unavailable'}
                                   </span>
                                 </div>
                               </div>
@@ -649,34 +655,35 @@ export default function AiFishIdentifierModal({
                               {comparisonData.providers.muse_glimmer.status === 'success' ? (
                                 <>
                                   <div>
-                                    <div className="text-sm font-bold text-slate-900">
-                                      {comparisonData.providers.muse_glimmer.suggested_species?.kiribati_name || 'Unknown'}
+                                    <div className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
+                                      <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+                                      {comparisonData.providers.muse_glimmer.suggested_species?.kiribati_name || 'Fish Specimen Isolated'}
                                     </div>
                                     <div className="text-xs text-slate-600 font-medium">
-                                      {comparisonData.providers.muse_glimmer.suggested_species?.common_name || ''}
+                                      {comparisonData.providers.muse_glimmer.suggested_species?.common_name || 'Visual Concept: fish'}
                                     </div>
                                     <div className="text-[11px] italic text-slate-400 font-serif">
-                                      {comparisonData.providers.muse_glimmer.scientific_name}
+                                      {comparisonData.providers.muse_glimmer.scientific_name || 'Actinopterygii'}
                                     </div>
                                   </div>
 
                                   {comparisonData.providers.muse_glimmer.reasoning && (
                                     <p className="text-[11px] text-purple-950 bg-white/70 p-2 rounded-lg border border-purple-100">
-                                      <span className="font-semibold text-purple-900">Reasoning: </span>
+                                      <span className="font-semibold text-purple-900">SAM Evidence: </span>
                                       {comparisonData.providers.muse_glimmer.reasoning}
                                     </p>
                                   )}
 
                                   {comparisonData.providers.muse_glimmer.visible_features?.length > 0 && (
                                     <div className="text-[10px] text-slate-600">
-                                      <span className="font-semibold text-purple-900">Visible traits: </span>
+                                      <span className="font-semibold text-purple-900">Segmentation traits: </span>
                                       {comparisonData.providers.muse_glimmer.visible_features.slice(0, 3).join(', ')}
                                     </div>
                                   )}
                                 </>
                               ) : (
                                 <div className="text-xs text-slate-500 italic py-2">
-                                  Provider unconfigured or unavailable: {comparisonData.providers.muse_glimmer.error || 'Failed'}
+                                  SAM unconfigured or unavailable: {comparisonData.providers.muse_glimmer.error || 'Failed'}
                                 </div>
                               )}
                             </div>
@@ -687,7 +694,7 @@ export default function AiFishIdentifierModal({
                                 onClick={() => handleApplyProviderSuggestion(comparisonData.providers.muse_glimmer)}
                                 className="mt-3 w-full py-1.5 px-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-bold transition flex items-center justify-center gap-1 shadow-xs"
                               >
-                                <span>Use Meta Suggestion</span>
+                                <span>Use SAM Evidence</span>
                               </button>
                             )}
                           </div>
@@ -776,7 +783,7 @@ export default function AiFishIdentifierModal({
                       </span>
                       {selectedAiProvider === 'muse_glimmer' ? (
                         <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-700 border border-purple-200">
-                          🔮 Meta Muse Glimmer Vision
+                          🔬 Meta SAM 3.1 (Segmentation)
                         </span>
                       ) : selectedAiProvider === 'openai' ? (
                         <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-teal-100 text-teal-800 border border-teal-200">
@@ -801,6 +808,10 @@ export default function AiFishIdentifierModal({
                         <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-teal-100 text-teal-800 border border-teal-200 flex items-center gap-1">
                           <Sparkles className="w-3 h-3 text-teal-600" />
                           Stage 4: OpenAI Vision ({aiResult.openai_model?.model ?? 'gpt-4o'})
+                        </span>
+                      ) : (aiResult.model?.includes('SAM') || aiResult.model?.includes('sam-3.1')) ? (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-700 border border-purple-200">
+                          🔬 Meta SAM 3.1
                         </span>
                       ) : aiResult.model?.includes('Muse Glimmer') ? (
                         <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-700 border border-purple-200">
@@ -889,6 +900,59 @@ export default function AiFishIdentifierModal({
                       <div className="mt-2 text-[11px] text-teal-800 bg-teal-50 p-2 rounded border border-teal-100">
                         <span className="font-semibold text-teal-900">OpenAI Vision Reasoning: </span>
                         {aiResult.openai_model.reasoning}
+                      </div>
+                    )}
+
+                    {/* Meta SAM 3.1 Segmentation Evidence Card */}
+                    {aiResult.segmentation && (
+                      <div className="mt-3 p-2.5 rounded-lg border bg-gradient-to-r from-purple-50/70 to-indigo-50/70 border-purple-200 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1.5">
+                            <span className="text-sm">🔬</span>
+                            <span className="text-xs font-bold text-purple-900">
+                              Meta SAM 3.1 Visual Segmentation Evidence
+                            </span>
+                          </div>
+                          {aiResult.segmentation.status === 'ok' ? (
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200 flex items-center gap-1">
+                              ✓ {aiResult.segmentation.fish_detected ? 'Fish Confirmed' : 'No Fish Detected'}
+                            </span>
+                          ) : (
+                            <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
+                              {aiResult.segmentation.status}
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-[11px]">
+                          <div className="bg-white/80 p-2 rounded border border-purple-100">
+                            <span className="text-[10px] text-slate-500 block">Objects Segmented:</span>
+                            <span className="font-bold text-slate-800">
+                              {aiResult.segmentation.object_count ?? 0} fish object(s)
+                            </span>
+                          </div>
+                          <div className="bg-white/80 p-2 rounded border border-purple-100">
+                            <span className="text-[10px] text-slate-500 block">Bounding Box:</span>
+                            <span className="font-mono text-[10px] font-semibold text-purple-900">
+                              {aiResult.segmentation.best_box
+                                ? `[${aiResult.segmentation.best_box.x1}, ${aiResult.segmentation.best_box.y1}] → [${aiResult.segmentation.best_box.x2}, ${aiResult.segmentation.best_box.y2}]`
+                                : 'None detected'}
+                            </span>
+                          </div>
+                          <div className="bg-white/80 p-2 rounded border border-purple-100 col-span-2 sm:col-span-1">
+                            <span className="text-[10px] text-slate-500 block">Contour Mask:</span>
+                            <span className="font-semibold text-slate-800">
+                              {aiResult.segmentation.best_box?.has_mask ? '✓ Mask present' : 'Bounding box only'}
+                            </span>
+                          </div>
+                        </div>
+
+                        {aiResult.segmentation_warning && (
+                          <div className="text-[11px] text-amber-800 bg-amber-50 p-2 rounded border border-amber-200 flex items-center gap-1.5">
+                            <AlertTriangle className="w-3.5 h-3.5 text-amber-700 flex-shrink-0" />
+                            <span>{aiResult.segmentation_warning}</span>
+                          </div>
+                        )}
                       </div>
                     )}
 

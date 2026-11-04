@@ -571,6 +571,26 @@ export interface AiIdentificationResult {
     reasoning?: string | null;
     latency_ms?: number;
   };
+  segmentation?: {
+    provider?: string;
+    model?: string;
+    status?: string;
+    fish_detected?: boolean | null;
+    object_count?: number;
+    best_box?: {
+      id?: string | number;
+      x1?: number;
+      y1?: number;
+      x2?: number;
+      y2?: number;
+      w?: number;
+      h?: number;
+      has_mask?: boolean;
+      mask_coverage?: number | null;
+    } | null;
+    error?: string | null;
+  };
+  segmentation_warning?: string | null;
 }
 
 

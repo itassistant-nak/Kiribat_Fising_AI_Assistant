@@ -365,8 +365,8 @@ class AiIdentificationController extends Controller
             ]);
         }
 
-        // ── 2. User Explicitly Selected Meta Muse Glimmer ──
-        if (in_array($requestedProvider, ['meta', 'muse_glimmer', 'glimmer'])) {
+        // ── 2. User Explicitly Selected Meta AI / SAM 3.1 ──
+        if (in_array($requestedProvider, ['meta', 'muse_glimmer', 'glimmer', 'sam', 'sam-3.1', 'sam_3.1', 'meta_sam'])) {
             $imageForVision = $dataUrl ?: $imagePath;
             $dbReferenceSpecies = Species::whereIn('record_type', ['species'])
                 ->get(['id', 'kiribati_name', 'english_name', 'scientific_name', 'ciguatera_risk'])
@@ -382,7 +382,7 @@ class AiIdentificationController extends Controller
                 hint: (string) $request->input('hint', '')
             );
 
-            $normalized = $this->comparisonService->normalizeMuseResponse($museRaw);
+            $normalized = $this->comparisonService->normalizeMuseResponse($museRaw, null, 0, $samResult);
             $offlineCatalogue = $this->comparisonService->generateOfflineCatalogueReference(
                 (string) $request->input('hint', ''),
                 $dbReferenceSpecies
@@ -442,17 +442,17 @@ class AiIdentificationController extends Controller
                         ? 'High CFP risk reported in coastal reef zones.'
                         : null,
                     'visual_features'             => $isSuccess ? ($normalized['visible_features'] ?? []) : [],
-                    'model'                       => 'Meta Muse Glimmer Vision (' . ($normalized['model'] ?? 'muse-glimmer') . ')',
-                    'model_version'               => $normalized['model'] ?? 'muse-glimmer',
+                    'model'                       => ($normalized['model'] ?? 'Meta AI') . ' (' . ($normalized['model_identifier'] ?? 'sam-3.1') . ')',
+                    'model_version'               => $normalized['model_identifier'] ?? ($normalized['model'] ?? 'sam-3.1'),
                     'analyzed_at'                 => now()->toIso8601String(),
                     'candidates'                  => array_slice($candidates, 0, 3),
                     'meta_model'                  => [
                         'status'    => $normalized['status'],
-                        'model'     => $normalized['model'] ?? 'muse-glimmer',
+                        'model'     => $normalized['model_identifier'] ?? ($normalized['model'] ?? 'sam-3.1'),
                         'reasoning' => $normalized['reasoning'] ?? null,
                     ],
                     'requires_human_confirmation' => true,
-                    'message'                     => $isSuccess ? null : 'No live AI identification was performed. Meta Muse Glimmer is currently unavailable.',
+                    'message'                     => $isSuccess ? null : 'No live AI identification was performed. Meta AI provider is currently unavailable.',
                     'segmentation'                => $segmentation,
                     'segmentation_warning'        => $segmentationWarning,
                 ],
