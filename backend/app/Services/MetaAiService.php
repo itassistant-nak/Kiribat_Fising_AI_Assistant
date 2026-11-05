@@ -535,6 +535,43 @@ PROMPT;
                 ];
             }
 
+            $candidateModels = array_values(array_unique(array_filter([
+                $targetModel,
+                'muse-spark-1.3',
+                'muse-spark-1.2',
+                'muse-spark-1.1',
+                $this->model,
+            ])));
+
+            $lastResult = null;
+            foreach ($candidateModels as $candidateModel) {
+                $attempt = $this->attemptVisionRequest($candidateModel, $dataUrl, $prompt, $startTime);
+                if (($attempt['status'] ?? '') !== 'model_unavailable') {
+                    return $attempt;
+                }
+                $lastResult = $attempt;
+            }
+
+            return $lastResult;
+        } catch (\Throwable $e) {
+            $latencyMs = (int) round((microtime(true) - $startTime) * 1000);
+            $msg = $e->getMessage();
+            $isTimeout = str_contains(strtolower($msg), 'timeout') || str_contains(strtolower($msg), 'timed out');
+
+            return [
+                'status'     => $isTimeout ? 'timeout' : 'failed',
+                'model'      => $targetModel,
+                'parsed'     => null,
+                'raw_text'   => null,
+                'latency_ms' => $latencyMs,
+                'error'      => 'Connection to Meta vision API failed: ' . $msg,
+            ];
+        }
+    }
+
+    protected function attemptVisionRequest(string $targetModel, string $dataUrl, string $prompt, float $startTime): array
+    {
+        try {
             // Auto-detect payload format from vision endpoint URL.
             // /responses endpoint uses Meta Responses API format (input[]).
             // /chat/completions endpoint uses OpenAI-compatible format (messages[]).

@@ -467,3 +467,9 @@
   3. Provider key `muse_glimmer` is retained for API/mobile compatibility; display names and model identifiers show the real configured model.
   4. OpenAI malformed JSON maps to `invalid_response` and HTTP 404 to `model_unavailable`, preserved through comparison normalization.
 - Consequences: Honest per-provider status (both_failed / single_provider_result remain truthful); live vision still requires one user-approved `muse-spark-1.3` image probe before claiming live identification works.
+
+## ADR-033 — Muse Vision Model Fallback on 404 Only (accepted)
+- Status: Accepted (P0-26, 2026-11-05).
+- Context: Live Railway calls returned `model_unavailable` ("The requested model was not found") for `muse-spark-1.3` on both `/v1/responses` and `/v1/chat/completions`, despite the model appearing in the authenticated account model list.
+- Decision: `MetaAiService::sendVisionRequest` retries only on HTTP 404 (`model_unavailable`) through account-listed candidates in order: configured vision model, `muse-spark-1.3`, `muse-spark-1.2`, `muse-spark-1.1`, then the configured text model (`muse-wonder-1.0`) as a last image probe. No retry on 401/429/400/timeout. First non-404 result wins and is returned honestly.
+- Consequences: A single dashboard run discovers the first vision-served Muse model without code redeploys per model; if every candidate 404s, the provider stays `model_unavailable` with no fabricated identification.

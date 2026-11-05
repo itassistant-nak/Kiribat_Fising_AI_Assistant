@@ -608,4 +608,43 @@ class MuseGlimmerVisionTest extends TestCase
         $this->assertSame(0.63, $result['identification']['confidence']);
         $this->assertSame('Albula glossodonta', $result['identification']['scientific_name']);
     }
+
+    public function test_muse_vision_falls_back_to_next_spark_model_on_404(): void
+    {
+        $speciesData = [
+            'kiribati_name' => 'Te Bwere',
+            'english_name' => 'Paddletail Snapper',
+            'scientific_name' => 'Lutjanus gibbus',
+            'confidence' => 0.91,
+            'visual_features' => ['Paddle-shaped caudal fin'],
+            'reasoning' => 'Fallback model identified the specimen.',
+        ];
+
+        Http::fake([
+            'https://api.meta.ai/*' => function ($request) use ($speciesData) {
+                $model = $request['model'] ?? '';
+                if ($model === 'muse-spark-1.3') {
+                    return Http::response(['error' => ['message' => 'The requested model was not found.']], 404);
+                }
+                if ($model === 'muse-spark-1.2') {
+                    return Http::response($this->glimmerJsonResponse($speciesData), 200);
+                }
+                return Http::response(['error' => ['message' => 'The requested model was not found.']], 404);
+            },
+        ]);
+
+        $service = new MetaAiService(
+            'https://api.meta.ai/v1/responses',
+            'muse-wonder-1.0',
+            'valid_key',
+            5,
+            'muse-spark-1.3',
+            10
+        );
+
+        $result = $service->identifyFishVision('data:image/jpeg;base64,/9j/4AAQSkZJRg==', []);
+
+        $this->assertSame('completed', $result['status']);
+        $this->assertSame('Lutjanus gibbus', $result['identification']['scientific_name']);
+    }
 }
